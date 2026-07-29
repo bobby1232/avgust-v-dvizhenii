@@ -1,98 +1,77 @@
-# vinext-starter
+# Август в движении
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Telegram Mini App для общего конкурса активности. React-интерфейс обращается только к серверным API; PostgreSQL в Railway является единственным источником профилей, отметок и статистики. Drizzle описывает схему и применяет версионированные миграции, а `pg.Pool` переиспользуется между запросами.
 
-## Prerequisites
+## Архитектура и данные
 
-- Node.js `>=22.13.0`
+- `app/api` — Telegram-аутентификация, профиль, регистрация, активности, сообщество, администрирование и healthcheck.
+- `db/schema.ts` — PostgreSQL-схема Drizzle; `db/client.ts` — ограниченный пул соединений.
+- `lib/telegram.ts` проверяет HMAC-подпись и срок жизни Telegram WebApp `initData` до выдачи сессии.
+- Сессия подписана HMAC-SHA256 и находится в `httpOnly`, `sameSite=lax`, production-`secure` cookie. `initData` и Telegram ID не сохраняются браузером.
+- Администратор определяется при каждом запросе по серверному `ADMIN_TELEGRAM_IDS`; значения `role`, `isAdmin` и Telegram ID от клиента не принимаются.
 
-## Quick Start
+Таблицы: `competitions` (один активный конкурс обеспечен partial unique index), `users` (уникальный `telegram_id` типа `bigint`), `activities` (внешние ключи и одна отметка пользователя в день), `audit_logs` (JSONB-журнал операций).
+
+## Переменные окружения
+
+Скопируйте `.env.example` в `.env.local`:
+
+| Переменная | Назначение |
+|---|---|
+| `DATABASE_URL` | Единственная строка подключения PostgreSQL |
+| `TELEGRAM_BOT_TOKEN` | Токен бота для проверки `initData` |
+| `ADMIN_TELEGRAM_IDS` | Telegram ID администраторов через запятую |
+| `SESSION_SECRET` | Случайная строка не короче 32 символов |
+| `DEV_TELEGRAM_USER_ID` | Необязательный локальный ID; игнорируется в production |
+| `DATABASE_POOL_SIZE` | Необязательный размер пула, по умолчанию 10 |
+
+Не коммитьте `.env*` с секретами. Создайте `SESSION_SECRET`, например, командой `openssl rand -base64 48`.
+
+## Локальный запуск
 
 ```bash
-npm install
+# тестовая локальная БД (не production)
+docker run --rm --name avgust-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=avgust -p 5432:5432 postgres:16
+cp .env.example .env.local
+npm ci
+npm run db:migrate
 npm run dev
-npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+Заполните `SESSION_SECRET`, `TELEGRAM_BOT_TOKEN`; либо задайте `DEV_TELEGRAM_USER_ID` для разработки вне Telegram. Development fallback отключён при `NODE_ENV=production`.
 
-## Included Shape
+Команды: `npm run db:generate` создаёт миграцию после изменения схемы, `npm run db:migrate` применяет её, `npm run lint`, `npm test`, `npm run build` проверяют проект. Миграции не запускаются во время Docker build.
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## API
 
-## Workspace Auth Headers
+- `POST /api/auth/telegram`, `GET /api/me`, `POST /api/register`
+- `GET|POST /api/activities`, `GET /api/community`
+- `GET /api/admin/stats`, `GET /api/admin/users`, `POST /api/admin/reset-contest`
+- `GET /api/health` выполняет `SELECT 1`, возвращая 200 или безопасный 503.
 
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
+Регистрация идемпотентна. Допустимые активности: бег, прогулка, йога и велосипед. Агрегаты сообщества получаются одним join без N+1.
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+### Глобальный сброс
 
-Treat the full name as optional and fall back to email when it is absent:
+Только серверный администратор может отправить точную фразу `НАЧАТЬ ЗАНОВО`. В одной транзакции с PostgreSQL advisory lock удаляются активности и пользователи, закрывается старый конкурс, создаётся новый активный конкурс и пишется аудит. При ошибке всё откатывается. После сброса даже администратор регистрируется заново; его роль снова выводится из окружения.
 
-```tsx
-import { headers } from "next/headers";
+## Развертывание с PostgreSQL на Railway
 
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
+1. Откройте текущий Railway project и добавьте PostgreSQL service.
+2. Передайте reference-переменную `DATABASE_URL` PostgreSQL service в application service.
+3. Добавьте в application service `TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`, случайный `SESSION_SECRET`.
+4. Запустите новый deployment.
+5. Убедитесь, что pre-deploy `npm run db:migrate` успешно завершился.
+6. Проверьте `https://<домен>/api/health` — ожидается `{"status":"ok"}`.
+7. Откройте Mini App в Telegram, зарегистрируйтесь и создайте активность.
+8. Под администратором проверьте статистику и глобальный сброс с подтверждением.
 
-  const displayName = fullName ?? email;
-  // ...
-}
-```
+`railway.json` сохраняет Dockerfile builder, restart policy и использует `/api/health`. PostgreSQL credentials в репозитории не нужны.
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+## Типовые ошибки
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+- 503 healthcheck: проверьте reference `DATABASE_URL`, доступность PostgreSQL и TLS.
+- «Сервис временно недоступен»: проверьте, что pre-deploy миграция выполнена.
+- Ошибка Telegram: проверьте токен бота, запуск именно из Mini App и актуальность `initData` (не старше суток).
+- Нет раздела «Админ»: добавьте числовой ID без `@` в `ADMIN_TELEGRAM_IDS` и повторно войдите.
+- Повторная отметка возвращает HTTP 409; это ограничение также защищено уникальным индексом БД.
