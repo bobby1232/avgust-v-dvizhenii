@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import "./globals.css";
 import "./database.css";
 
@@ -21,16 +20,31 @@ export const metadata: Metadata = {
   },
 };
 
+const telegramBootstrap = `
+(function () {
+  var attempts = 0;
+  var timer = setInterval(function () {
+    attempts += 1;
+    var webApp = window.Telegram && window.Telegram.WebApp;
+    if (webApp) {
+      try { webApp.ready(); } catch (_) {}
+      try { webApp.expand(); } catch (_) {}
+      clearInterval(timer);
+    } else if (attempts >= 100) {
+      clearInterval(timer);
+    }
+  }, 50);
+})();
+`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru">
-      <body>
-        <Script
-          src="https://telegram.org/js/telegram-web-app.js"
-          strategy="beforeInteractive"
-        />
-        {children}
-      </body>
+      <head>
+        <script src="https://telegram.org/js/telegram-web-app.js?59" />
+        <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
+      </head>
+      <body>{children}</body>
     </html>
   );
 }
