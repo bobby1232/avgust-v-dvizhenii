@@ -1,95 +1,309 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Tab = "today" | "progress" | "community" | "admin";
-type Activity = { id: number; title: string; meta: string; icon: string; active?: boolean };
+type Participant = {
+  id: string;
+  name: string;
+  telegramUsername: string | null;
+  activeDays: number;
+  streak: number;
+  maxStreak: number;
+  activityDates: string[];
+};
+type Activity = {
+  id: string;
+  activityType: string;
+  note: string | null;
+  activityDate: string;
+  createdAt: string;
+};
+type AppState = {
+  today: string;
+  participant: Participant | null;
+  participants: Participant[];
+  recentActivities: Activity[];
+  stats: {
+    totalParticipants: number;
+    totalDays: number;
+    todayCheckins: number;
+  };
+};
 
-const week = [
-  { day: "Пн", date: "12", done: true },
-  { day: "Вт", date: "13", done: true },
-  { day: "Ср", date: "14", done: true },
-  { day: "Чт", date: "15", done: true },
-  { day: "Пт", date: "16", done: true },
-  { day: "Сб", date: "17", done: true },
-  { day: "Вс", date: "18", done: false, today: true },
-];
+type TelegramUser = {
+  id?: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
 
-const people = [
-  { name: "Лена К.", days: 18, streak: 18, color: "#f0b45d" },
-  { name: "Саша М.", days: 17, streak: 12, color: "#ef8354" },
-  { name: "Вы", days: 16, streak: 7, color: "#b7d75b" },
-  { name: "Ира П.", days: 15, streak: 9, color: "#8fc9c2" },
-  { name: "Дима Р.", days: 13, streak: 5, color: "#a8a1ef" },
-];
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: {
+        ready?: () => void;
+        expand?: () => void;
+        initDataUnsafe?: { user?: TelegramUser };
+      };
+    };
+  }
+}
 
-const badges = [
-  { icon: "✦", title: "Первый шаг", note: "Первая отметка", earned: true },
-  { icon: "7", title: "Неделя в ритме", note: "Серия 7 дней", earned: true },
-  { icon: "10", title: "Десятка", note: "10 активных дней", earned: true },
-  { icon: "↗", title: "Новый маршрут", note: "Новый вид активности", earned: false },
-  { icon: "31", title: "Весь август", note: "31 день без пропусков", earned: false },
-];
+const emptyState: AppState = {
+  today: "",
+  participant: null,
+  participants: [],
+  recentActivities: [],
+  stats: { totalParticipants: 0, totalDays: 0, todayCheckins: 0 },
+};
+
+const activityOptions = ["Бег", "Прогулка", "Йога", "Велосипед", "Тренировка", "Другое"];
+
+function parseDate(value: string): Date {
+  return new Date(`${value}T12:00:00Z`);
+}
+
+function formatDate(value: string, options: Intl.DateTimeFormatOptions): string {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("ru-RU", { timeZone: "UTC", ...options }).format(parseDate(value));
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "У";
+}
+
+function buildWeek(today: string, activityDates: string[]) {
+  if (!today) return [];
+  const current = parseDate(today);
+  const day = current.getUTCDay() || 7;
+  const monday = new Date(current);
+  monday.setUTCDate(current.getUTCDate() - day + 1);
+  const completed = new Set(activityDates);
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setUTCDate(monday.getUTCDate() + index);
+    const key = date.toISOString().slice(0, 10);
+    return {
+      key,
+      day: new Intl.DateTimeFormat("ru-RU", { weekday: "short", timeZone: "UTC" })
+        .format(date)
+        .replace(".", ""),
+      date: date.getUTCDate(),
+      done: completed.has(key),
+      today: key === today,
+    };
+  });
+}
+
+async function readJson(response: Response): Promise<Record<string, unknown>> {
+  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  if (!response.ok) throw new Error(payload.error || "Не удалось выполнить запрос.");
+  return payload;
+}
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("today");
-  const [checkedIn, setCheckedIn] = useState(false);
-  const [activity, setActivity] = useState("Бег");
-  const [note, setNote] = useState("");
-  const [showCheckin, setShowCheckin] = useState(false);
+  const [data, setData] = useState<AppState>(emptyState);
+  const [participantId, setParticipantId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [requestBusy, setRequestBusy] = useState(false);
+  const [fatalError, setFatalError] = useState("");
   const [toast, setToast] = useState("");
-  const [adminFilter, setAdminFilter] = useState("Все");
-  const [schedule, setSchedule] = useState("20:30");
-  const [activities, setActivities] = useState<Activity[]>([
-    { id: 1, title: "Бег · 4,2 км", meta: "Сегодня, 08:10 · подтверждено", icon: "🏃", active: true },
-    { id: 2, title: "Йога · 25 мин", meta: "17 августа, 19:30", icon: "◎", active: true },
-    { id: 3, title: "Прогулка · 6,8 км", meta: "16 августа, 12:05", icon: "↗", active: true },
-  ]);
+  const [showCheckin, setShowCheckin] = useState(false);
+  const [showRegistration, setShowRegistration] = useState(false);
+  const [activity, setActivity] = useState(activityOptions[0]);
+  const [note, setNote] = useState("");
+  const [registrationName, setRegistrationName] = useState("");
+  const [registrationUsername, setRegistrationUsername] = useState("");
+  const [telegramId, setTelegramId] = useState("");
+  const [formError, setFormError] = useState("");
 
-  const days = checkedIn ? 17 : 16;
-  const totalParticipants = 148;
-  const totalDays = 1842 + (checkedIn ? 1 : 0);
-  const streak = checkedIn ? 8 : 7;
+  async function loadState(id: string | null, silent = false) {
+    if (!silent) setLoading(true);
+    setFatalError("");
+
+    try {
+      const query = id ? `?participantId=${encodeURIComponent(id)}` : "";
+      const response = await fetch(`/api/state${query}`, { cache: "no-store" });
+      const payload = (await readJson(response)) as unknown as AppState;
+      setData(payload);
+
+      if (id && !payload.participant) {
+        localStorage.removeItem("avgust_participant_id");
+        setParticipantId(null);
+        setShowRegistration(true);
+      } else if (!payload.participant) {
+        setShowRegistration(true);
+      }
+    } catch (error) {
+      setFatalError(error instanceof Error ? error.message : "Не удалось загрузить данные.");
+      setShowRegistration(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const telegram = window.Telegram?.WebApp;
+    telegram?.ready?.();
+    telegram?.expand?.();
+    const telegramUser = telegram?.initDataUnsafe?.user;
+
+    if (telegramUser) {
+      const fullName = [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ");
+      if (fullName) setRegistrationName(fullName);
+      if (telegramUser.username) setRegistrationUsername(telegramUser.username);
+      if (telegramUser.id) setTelegramId(String(telegramUser.id));
+    }
+
+    const storedId = localStorage.getItem("avgust_participant_id");
+    setParticipantId(storedId);
+    void loadState(storedId);
+  }, []);
+
+  const participant = data.participant;
+  const checkedIn = Boolean(participant && data.today && participant.activityDates.includes(data.today));
+  const week = useMemo(
+    () => buildWeek(data.today, participant?.activityDates ?? []),
+    [data.today, participant?.activityDates],
+  );
+  const earnedBadges = Math.min(
+    5,
+    [1, 7, 10, 20, 31].filter((target) => (participant?.activeDays ?? 0) >= target).length,
+  );
+  const goalProgress = Math.min(100, Math.round((data.stats.totalDays / 2500) * 100));
 
   const title = useMemo(() => {
     if (tab === "progress") return "Мой август";
     if (tab === "community") return "Вместе";
     if (tab === "admin") return "Управление";
-    return "Привет, Иван";
-  }, [tab]);
+    return participant ? `Привет, ${participant.name.split(" ")[0]}` : "Август в движении";
+  }, [participant, tab]);
 
   function showToast(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(""), 2400);
+    window.setTimeout(() => setToast(""), 2600);
   }
 
-  function submitCheckin() {
-    if (checkedIn) return;
-    setCheckedIn(true);
-    setActivities((items) => [
-      { id: Date.now(), title: `${activity}${note ? ` · ${note}` : ""}`, meta: "Сегодня · подтверждено", icon: "✓", active: true },
-      ...items,
-    ]);
-    setShowCheckin(false);
-    showToast("Активность засчитана. Серия продолжается!");
+  async function submitRegistration(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setRequestBusy(true);
+    setFormError("");
+
+    try {
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: registrationName,
+          telegramUsername: registrationUsername,
+          telegramId,
+        }),
+      });
+      const payload = (await readJson(response)) as unknown as {
+        participant: { id: string };
+        restored: boolean;
+      };
+
+      localStorage.setItem("avgust_participant_id", payload.participant.id);
+      setParticipantId(payload.participant.id);
+      setShowRegistration(false);
+      await loadState(payload.participant.id, true);
+      showToast(payload.restored ? "Профиль восстановлен" : "Регистрация завершена");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Не удалось зарегистрироваться.");
+    } finally {
+      setRequestBusy(false);
+    }
+  }
+
+  async function submitCheckin() {
+    if (!participantId || checkedIn) return;
+    setRequestBusy(true);
+    setFormError("");
+
+    try {
+      const response = await fetch("/api/checkins", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ participantId, activityType: activity, note }),
+      });
+      await readJson(response);
+      setShowCheckin(false);
+      setNote("");
+      await loadState(participantId, true);
+      showToast("Активность засчитана. Серия продолжается!");
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Не удалось засчитать активность.");
+    } finally {
+      setRequestBusy(false);
+    }
   }
 
   function downloadCsv() {
-    const rows = [
-      ["Участник", "Активных дней", "Текущая серия", "Максимальная серия", "Статус"],
-      ["Иван Петров", days, streak, 12, "В игре"],
-      ["Лена К.", 18, 18, 18, "В игре"],
-      ["Саша М.", 17, 12, 15, "В игре"],
-      ["Ира П.", 15, 9, 9, "В игре"],
+    const rows: Array<Array<string | number>> = [
+      ["Участник", "Telegram", "Активных дней", "Текущая серия", "Максимальная серия"],
+      ...data.participants.map((item) => [
+        item.name,
+        item.telegramUsername ? `@${item.telegramUsername}` : "",
+        item.activeDays,
+        item.streak,
+        item.maxStreak,
+      ]),
     ];
-    const csv = "\uFEFF" + rows.map((row) => row.join(";")).join("\n");
+    const csv = `\uFEFF${rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(";")).join("\n")}`;
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    link.download = "avgust-v-dvizhenii.csv";
+    link.download = `avgust-v-dvizhenii-${data.today || "export"}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
     showToast("Выгрузка готова");
   }
+
+  async function resetContest() {
+    const confirmed = window.confirm(
+      "Будут безвозвратно удалены все участники и все отметки. Конкурс начнётся с нуля. Продолжить?",
+    );
+    if (!confirmed) return;
+
+    const secret = window.prompt("Введите ADMIN_SECRET из Railway:");
+    if (!secret) return;
+
+    setRequestBusy(true);
+    try {
+      const response = await fetch("/api/admin/reset", {
+        method: "DELETE",
+        headers: { "x-admin-secret": secret },
+      });
+      await readJson(response);
+      localStorage.removeItem("avgust_participant_id");
+      setParticipantId(null);
+      setData(emptyState);
+      setTab("today");
+      setShowRegistration(true);
+      await loadState(null, true);
+      showToast("Конкурс очищен и запущен заново");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Не удалось очистить конкурс.");
+    } finally {
+      setRequestBusy(false);
+    }
+  }
+
+  const badgeDefinitions = [
+    { icon: "✦", title: "Первый шаг", note: "1 активный день", target: 1 },
+    { icon: "7", title: "Неделя в ритме", note: "7 активных дней", target: 7 },
+    { icon: "10", title: "Десятка", note: "10 активных дней", target: 10 },
+    { icon: "20", title: "В розыгрыше", note: "20 активных дней", target: 20 },
+    { icon: "31", title: "Весь август", note: "31 активный день", target: 31 },
+  ];
 
   return (
     <main className="app-shell">
@@ -99,34 +313,60 @@ export default function Home() {
             <span className="brand-mark">А</span>
             <span>АВГУСТ<br /><b>В ДВИЖЕНИИ</b></span>
           </button>
-          <button className="avatar" onClick={() => setTab("progress")} aria-label="Открыть профиль">ИП</button>
+          <button
+            className="avatar"
+            onClick={() => participant ? setTab("progress") : setShowRegistration(true)}
+            aria-label="Открыть профиль"
+          >
+            {participant ? initials(participant.name) : "+"}
+          </button>
         </header>
 
         <div className="page-heading">
-          <p>{tab === "today" ? "18 августа · воскресенье" : tab === "admin" ? "Панель организатора" : "Август в движении"}</p>
+          <p>
+            {tab === "admin"
+              ? "Панель организатора"
+              : data.today
+                ? formatDate(data.today, { day: "numeric", month: "long", weekday: "long" })
+                : "Спортивный конкурс"}
+          </p>
           <h1>{title}</h1>
         </div>
 
-        {tab === "today" && (
+        {fatalError && (
+          <section className="error-card">
+            <b>Приложение не подключено к базе</b>
+            <p>{fatalError}</p>
+            <button onClick={() => void loadState(participantId)}>Повторить</button>
+          </section>
+        )}
+
+        {loading && !fatalError && <div className="loading-card">Загружаем данные конкурса…</div>}
+
+        {!loading && !fatalError && tab === "today" && (
           <div className="view">
             <section className="hero-card">
               <div className="hero-top">
                 <div>
                   <span className="eyebrow">{checkedIn ? "Сегодня готово" : "Серия продолжается"}</span>
-                  <h2><strong>{streak}</strong> дней подряд</h2>
+                  <h2><strong>{participant?.streak ?? 0}</strong> дней подряд</h2>
                 </div>
                 <div className="streak-orbit"><span>↗</span></div>
               </div>
               <div className="week-row">
                 {week.map((item) => (
-                  <div className={`day ${item.today ? "today" : ""} ${item.done || checkedIn && item.today ? "done" : ""}`} key={item.date}>
+                  <div className={`day ${item.today ? "today" : ""} ${item.done ? "done" : ""}`} key={item.key}>
                     <span>{item.day}</span>
-                    <b>{item.done || checkedIn && item.today ? "✓" : item.date}</b>
+                    <b>{item.done ? "✓" : item.date}</b>
                   </div>
                 ))}
               </div>
-              <button className={`primary ${checkedIn ? "complete" : ""}`} onClick={() => !checkedIn && setShowCheckin(true)}>
-                {checkedIn ? "✓ Активность уже засчитана" : "Отметить активность"}
+              <button
+                className={`primary ${checkedIn ? "complete" : ""}`}
+                disabled={requestBusy || checkedIn}
+                onClick={() => participant ? setShowCheckin(true) : setShowRegistration(true)}
+              >
+                {checkedIn ? "✓ Активность уже засчитана" : participant ? "Отметить активность" : "Зарегистрироваться"}
               </button>
               <small>{checkedIn ? "Следующая отметка будет доступна завтра" : "Одна зачётная отметка в день"}</small>
             </section>
@@ -134,95 +374,79 @@ export default function Home() {
             <section className="section">
               <div className="section-title"><h3>Ваш прогресс</h3><button onClick={() => setTab("progress")}>Подробнее</button></div>
               <div className="stats-grid">
-                <article><span>Активных дней</span><b>{days}<i>/31</i></b><div className="bar"><i style={{ width: `${days / 31 * 100}%` }} /></div></article>
-                <article><span>До розыгрыша</span><b>{Math.max(0, 20 - days)}<i>дня</i></b><p>Нужно 20 активных дней</p></article>
+                <article><span>Активных дней</span><b>{participant?.activeDays ?? 0}<i>/31</i></b><div className="bar"><i style={{ width: `${Math.min(100, ((participant?.activeDays ?? 0) / 31) * 100)}%` }} /></div></article>
+                <article><span>До розыгрыша</span><b>{Math.max(0, 20 - (participant?.activeDays ?? 0))}<i>дней</i></b><p>Нужно 20 активных дней</p></article>
               </div>
             </section>
 
             <section className="theme-card">
-              <span className="theme-number">03</span>
-              <div><span className="eyebrow">Тема недели</span><h3>Двигаемся вместе</h3><p>Попробуйте общую тренировку или позовите друга на прогулку.</p></div>
-            </section>
-
-            <section className="training-card">
-              <div className="date-block"><b>21</b><span>АВГ</span></div>
-              <div><span className="eyebrow">Общая тренировка</span><h3>Функциональная тренировка</h3><p>Среда · 19:00 · Парк Горького</p></div>
-              <button onClick={() => showToast("Тренировка добавлена в планы")}>＋</button>
+              <span className="theme-number">01</span>
+              <div><span className="eyebrow">Старт конкурса</span><h3>Двигаемся вместе</h3><p>После очистки все участники начинают с нулевого прогресса.</p></div>
             </section>
           </div>
         )}
 
-        {tab === "progress" && (
+        {!loading && !fatalError && tab === "progress" && (
           <div className="view">
             <section className="progress-hero">
-              <div className="ring" style={{ "--progress": `${days / 31 * 360}deg` } as React.CSSProperties}><div><b>{days}</b><span>из 31 дня</span></div></div>
-              <div><span className="eyebrow">Вы в игре</span><h2>Отличный темп</h2><p>До участия в розыгрыше — {Math.max(0, 20 - days)} активных дня.</p></div>
+              <div className="ring" style={{ "--progress": `${((participant?.activeDays ?? 0) / 31) * 360}deg` } as React.CSSProperties}><div><b>{participant?.activeDays ?? 0}</b><span>из 31 дня</span></div></div>
+              <div><span className="eyebrow">{participant ? "Вы в игре" : "Нет регистрации"}</span><h2>{participant ? "Продолжайте в своём темпе" : "Создайте профиль"}</h2><p>До участия в розыгрыше — {Math.max(0, 20 - (participant?.activeDays ?? 0))} активных дней.</p></div>
             </section>
             <div className="triple-stats">
-              <article><b>{streak}</b><span>текущая серия</span></article>
-              <article><b>12</b><span>макс. серия</span></article>
-              <article><b>3</b><span>достижения</span></article>
+              <article><b>{participant?.streak ?? 0}</b><span>текущая серия</span></article>
+              <article><b>{participant?.maxStreak ?? 0}</b><span>макс. серия</span></article>
+              <article><b>{earnedBadges}</b><span>достижения</span></article>
             </div>
             <section className="section">
-              <div className="section-title"><h3>Достижения</h3><span>3 из 5</span></div>
+              <div className="section-title"><h3>Достижения</h3><span>{earnedBadges} из 5</span></div>
               <div className="badges">
-                {badges.map((badge) => <article className={badge.earned ? "" : "locked"} key={badge.title}><div>{badge.icon}</div><b>{badge.title}</b><span>{badge.note}</span></article>)}
+                {badgeDefinitions.map((badge) => <article className={(participant?.activeDays ?? 0) >= badge.target ? "" : "locked"} key={badge.title}><div>{badge.icon}</div><b>{badge.title}</b><span>{badge.note}</span></article>)}
               </div>
             </section>
             <section className="section">
-              <div className="section-title"><h3>Последняя активность</h3><button onClick={() => setTab("today")}>Все дни</button></div>
+              <div className="section-title"><h3>Последняя активность</h3></div>
               <div className="activity-list">
-                {activities.slice(0, 3).map((item) => <article key={item.id}><span>{item.icon}</span><div><b>{item.title}</b><small>{item.meta}</small></div><i>✓</i></article>)}
+                {data.recentActivities.length === 0 && <div className="empty-state">Пока нет ни одной отметки.</div>}
+                {data.recentActivities.slice(0, 5).map((item) => <article key={item.id}><span>✓</span><div><b>{item.activityType}{item.note ? ` · ${item.note}` : ""}</b><small>{formatDate(item.activityDate, { day: "numeric", month: "long" })}</small></div><i>✓</i></article>)}
               </div>
             </section>
           </div>
         )}
 
-        {tab === "community" && (
+        {!loading && !fatalError && tab === "community" && (
           <div className="view">
             <section className="report-card">
-              <span className="eyebrow">Итоги недели · 12–18 августа</span>
-              <h2>Ещё одна неделя<br />в движении</h2>
-              <div className="report-stats"><div><b>{totalParticipants}</b><span>остаются в игре</span></div><div><b>{totalDays.toLocaleString("ru")}</b><span>активных дней вместе</span></div></div>
-              <div className="collective-goal"><span>Общая цель · 2 500 дней</span><b>74%</b><i><em style={{ width: "74%" }} /></i></div>
+              <span className="eyebrow">Результаты конкурса</span>
+              <h2>Каждый движется<br />в своём ритме</h2>
+              <div className="report-stats"><div><b>{data.stats.totalParticipants}</b><span>участников зарегистрировано</span></div><div><b>{data.stats.totalDays.toLocaleString("ru")}</b><span>активных дней вместе</span></div></div>
+              <div className="collective-goal"><span>Общая цель · 2 500 дней</span><b>{goalProgress}%</b><i><em style={{ width: `${goalProgress}%` }} /></i></div>
             </section>
             <section className="section">
-              <div className="section-title"><h3>Участники</h3><span>Без мест — каждый в своём темпе</span></div>
+              <div className="section-title"><h3>Участники</h3><span>Реальные данные из PostgreSQL</span></div>
               <div className="people-list">
-                {people.map((person) => <article key={person.name}><span className="person-avatar" style={{ background: person.color }}>{person.name.slice(0, 1)}</span><div><b>{person.name}</b><small>{person.days} активных дней</small></div><span className="series">↗ {person.streak} дней</span></article>)}
+                {data.participants.length === 0 && <div className="empty-state">Пока никто не зарегистрировался.</div>}
+                {data.participants.map((person) => <article key={person.id}><span className="person-avatar">{initials(person.name)}</span><div><b>{person.name}{person.id === participantId ? " · Вы" : ""}</b><small>{person.activeDays} активных дней{person.telegramUsername ? ` · @${person.telegramUsername}` : ""}</small></div><span className="series">↗ {person.streak} дней</span></article>)}
               </div>
-            </section>
-            <section className="story-card">
-              <div className="story-image" role="img" aria-label="Силуэт бегуна на фоне заката"><span>«</span></div>
-              <div><span className="eyebrow">История недели</span><h3>«Я начала с десяти минут. Теперь не представляю утро без движения»</h3><p>Аня, участница проекта</p></div>
             </section>
           </div>
         )}
 
-        {tab === "admin" && (
+        {!loading && !fatalError && tab === "admin" && (
           <div className="view admin-view">
-            <div className="admin-tabs">
-              {["Все", "Спорные", "Отключены"].map((item) => <button className={adminFilter === item ? "active" : ""} onClick={() => setAdminFilter(item)} key={item}>{item}{item === "Спорные" && <i>3</i>}</button>)}
-            </div>
             <section className="admin-summary">
-              <article><span>В игре</span><b>148</b><small>из 156 регистраций</small></article>
-              <article><span>Отметок сегодня</span><b>96</b><small>65% участников</small></article>
+              <article><span>Регистраций</span><b>{data.stats.totalParticipants}</b><small>в текущем конкурсе</small></article>
+              <article><span>Отметок сегодня</span><b>{data.stats.todayCheckins}</b><small>{data.stats.totalParticipants ? Math.round((data.stats.todayCheckins / data.stats.totalParticipants) * 100) : 0}% участников</small></article>
             </section>
             <section className="section">
-              <div className="section-title"><h3>Требуют внимания</h3><button onClick={() => showToast("Все спорные активности открыты")}>Открыть все</button></div>
-              <div className="review-list">
-                <article><span className="person-avatar orange">МК</span><div><b>Мария К.</b><small>Велосипед · фото загружено</small></div><button onClick={(e) => { e.currentTarget.closest("article")?.remove(); showToast("Активность подтверждена"); }}>Подтвердить</button></article>
-                <article><span className="person-avatar violet">АС</span><div><b>Андрей С.</b><small>Отметка за 17 августа</small></div><button onClick={(e) => { e.currentTarget.closest("article")?.remove(); showToast("Активность подтверждена"); }}>Подтвердить</button></article>
-              </div>
-            </section>
-            <section className="section">
-              <div className="section-title"><h3>Настройки проекта</h3></div>
+              <div className="section-title"><h3>Управление данными</h3></div>
               <div className="settings-list">
-                <label><div><b>Вечернее напоминание</b><small>Ежедневно по Москве</small></div><input aria-label="Время напоминания" type="time" value={schedule} onChange={(e) => setSchedule(e.target.value)} /></label>
-                <button onClick={() => showToast("Сообщение подготовлено к отправке")}><span>✉</span><div><b>Сообщение всем</b><small>148 получателей</small></div><i>›</i></button>
-                <button onClick={downloadCsv}><span>⇩</span><div><b>Выгрузить статистику</b><small>Excel / CSV</small></div><i>›</i></button>
-                <button onClick={() => showToast("Журнал действий открыт")}><span>≡</span><div><b>Журнал действий</b><small>Все ручные изменения</small></div><i>›</i></button>
+                <button onClick={downloadCsv}><span>⇩</span><div><b>Выгрузить статистику</b><small>Фактические участники и прогресс в CSV</small></div><i>›</i></button>
+                <button className="danger-action" disabled={requestBusy} onClick={() => void resetContest()}><span>×</span><div><b>Очистить весь конкурс</b><small>Удалить участников и активности, начать с нуля</small></div><i>›</i></button>
               </div>
+            </section>
+            <section className="admin-note">
+              <b>Защита очистки</b>
+              <p>Кнопка запрашивает секрет администратора. Его значение задаётся в Railway переменной <code>ADMIN_SECRET</code>.</p>
             </section>
           </div>
         )}
@@ -235,16 +459,34 @@ export default function Home() {
         </nav>
       </section>
 
-      {showCheckin && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowCheckin(false)}>
-        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="checkin-title">
-          <button className="modal-close" onClick={() => setShowCheckin(false)} aria-label="Закрыть">×</button>
-          <span className="eyebrow">18 августа</span><h2 id="checkin-title">Что сегодня делали?</h2>
-          <div className="activity-options">{["Бег", "Прогулка", "Йога", "Велосипед"].map((item) => <button className={activity === item ? "active" : ""} onClick={() => setActivity(item)} key={item}>{item}</button>)}</div>
-          <label className="note-field">Коротко об активности<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Например: 5 км в парке" /></label>
-          <button className="primary" onClick={submitCheckin}>Засчитать день</button>
-        </section>
-      </div>}
-      {toast && <div className="toast">✓ {toast}</div>}
+      {showRegistration && !fatalError && (
+        <div className="modal-backdrop registration-backdrop">
+          <form className="modal" onSubmit={submitRegistration}>
+            <span className="eyebrow">Регистрация участника</span>
+            <h2>Как вас записать?</h2>
+            <p className="modal-copy">Профиль нужен, чтобы сохранять ежедневные отметки и прогресс в общей базе.</p>
+            <label className="form-field">Имя и фамилия<input autoFocus value={registrationName} onChange={(event) => setRegistrationName(event.target.value)} placeholder="Иван Петров" maxLength={80} required /></label>
+            <label className="form-field">Telegram username <small>необязательно</small><input value={registrationUsername} onChange={(event) => setRegistrationUsername(event.target.value)} placeholder="username без @" maxLength={32} /></label>
+            {formError && <div className="form-error">{formError}</div>}
+            <button className="primary" disabled={requestBusy} type="submit">{requestBusy ? "Сохраняем…" : "Вступить в конкурс"}</button>
+          </form>
+        </div>
+      )}
+
+      {showCheckin && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setShowCheckin(false)}>
+          <section className="modal" role="dialog" aria-modal="true" aria-labelledby="checkin-title">
+            <button className="modal-close" onClick={() => setShowCheckin(false)} aria-label="Закрыть">×</button>
+            <span className="eyebrow">{formatDate(data.today, { day: "numeric", month: "long" })}</span><h2 id="checkin-title">Что сегодня делали?</h2>
+            <div className="activity-options">{activityOptions.map((item) => <button className={activity === item ? "active" : ""} onClick={() => setActivity(item)} key={item}>{item}</button>)}</div>
+            <label className="note-field">Коротко об активности<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Например: 5 км в парке" maxLength={200} /></label>
+            {formError && <div className="form-error">{formError}</div>}
+            <button className="primary" disabled={requestBusy} onClick={() => void submitCheckin()}>{requestBusy ? "Сохраняем…" : "Засчитать день"}</button>
+          </section>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
     </main>
   );
 }
