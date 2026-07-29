@@ -8,7 +8,7 @@ ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 ENV NPM_CONFIG_FUND=false
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install --omit=optional
 
 COPY . .
 RUN npm run build
