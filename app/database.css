@@ -1,0 +1,37 @@
+button:disabled { cursor: not-allowed; opacity: .62; }
+.page-heading p { text-transform: capitalize; }
+.week-row { gap: 4px; }
+.day { text-transform: capitalize; }
+.activity-list div, .people-list div { min-width: 0; }
+.activity-list b, .people-list b,
+.activity-list small, .people-list small { overflow-wrap: anywhere; }
+.person-avatar { flex: 0 0 auto; background: #dce5bb; }
+.series { flex: 0 0 auto; }
+.registration-backdrop { place-items: center; }
+.modal h2 { margin-bottom: 12px; }
+.modal-copy { margin: 0 0 20px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.form-field { display: grid; gap: 7px; margin: 18px 0; color: var(--muted); font-size: 10px; font-weight: 700; }
+.form-field small { font-weight: 400; }
+.form-field input { height: 47px; padding: 0 13px; border: 1px solid var(--line); border-radius: 13px; background: white; outline: none; color: var(--ink); }
+.form-field input:focus { border-color: var(--green); }
+.form-error { margin: -5px 0 14px; padding: 10px 12px; border-radius: 10px; background: #f8dedb; color: #842a24; font-size: 10px; line-height: 1.4; }
+.error-card, .loading-card { margin: 0 22px 22px; padding: 18px; border-radius: 18px; }
+.error-card { border: 1px solid #e3b3af; background: #f8dedb; }
+.error-card b { display: block; font-size: 13px; }
+.error-card p { margin: 8px 0 14px; color: #6f3a35; font-size: 10px; line-height: 1.5; }
+.error-card button { border: 0; border-radius: 10px; padding: 9px 13px; background: var(--ink); color: white; font-size: 10px; font-weight: 700; cursor: pointer; }
+.loading-card { background: var(--card); border: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+.empty-state { padding: 18px 0; color: var(--muted); font-size: 10px; text-align: center; }
+.settings-list .danger-action { color: #b9382f; }
+.settings-list .danger-action > span { background: #f8dedb; }
+.admin-note { margin: 0 22px; padding: 16px; border: 1px dashed #c9bfae; border-radius: 16px; background: #f8f2e7; }
+.admin-note b { font-size: 11px; }
+.admin-note p { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.admin-note code { font-size: 9px; color: var(--ink); }
+.toast { text-align: center; }
+@media (max-width: 560px) {
+  .registration-backdrop { padding: 16px; }
+  .registration-backdrop .modal { border-radius: 25px; }
+  .progress-hero { grid-template-columns: 110px 1fr; }
+  .ring { width: 105px; }
+}
