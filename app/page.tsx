@@ -1,283 +1,39 @@
 "use client";
-
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Tab = "today" | "progress" | "community" | "admin";
-type Activity = { id: number; title: string; meta: string; icon: string };
-type User = { name: string; department: string; registeredAt: string };
-
-const USER_KEY = "avgust-user-v1";
-const ACTIVITIES_KEY = "avgust-activities-v1";
-const CHECKIN_KEY = "avgust-checkin-v1";
-
-const emptyWeek = [
-  { day: "Пн", date: "1" },
-  { day: "Вт", date: "2" },
-  { day: "Ср", date: "3" },
-  { day: "Чт", date: "4" },
-  { day: "Пт", date: "5" },
-  { day: "Сб", date: "6" },
-  { day: "Вс", date: "7", today: true },
-];
-
-export default function Home() {
-  const [tab, setTab] = useState<Tab>("today");
-  const [user, setUser] = useState<User | null>(null);
-  const [name, setName] = useState("");
-  const [department, setDepartment] = useState("");
-  const [checkedIn, setCheckedIn] = useState(false);
-  const [activity, setActivity] = useState("Бег");
-  const [note, setNote] = useState("");
-  const [showCheckin, setShowCheckin] = useState(false);
-  const [showRegistration, setShowRegistration] = useState(false);
-  const [showReset, setShowReset] = useState(false);
-  const [toast, setToast] = useState("");
-  const [schedule, setSchedule] = useState("20:30");
-  const [activities, setActivities] = useState<Activity[]>([]);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem(USER_KEY);
-      const savedActivities = localStorage.getItem(ACTIVITIES_KEY);
-      const savedCheckin = localStorage.getItem(CHECKIN_KEY);
-
-      if (savedUser) setUser(JSON.parse(savedUser));
-      if (savedActivities) setActivities(JSON.parse(savedActivities));
-      if (savedCheckin === new Date().toISOString().slice(0, 10)) setCheckedIn(true);
-      if (!savedUser) setShowRegistration(true);
-    } catch {
-      localStorage.removeItem(USER_KEY);
-      localStorage.removeItem(ACTIVITIES_KEY);
-      localStorage.removeItem(CHECKIN_KEY);
-      setShowRegistration(true);
-    } finally {
-      setHydrated(true);
-    }
-  }, []);
-
-  const days = activities.length;
-  const streak = activities.length;
-  const initials = user?.name
-    ? user.name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
-    : "?";
-
-  const title = useMemo(() => {
-    if (tab === "progress") return "Мой август";
-    if (tab === "community") return "Вместе";
-    if (tab === "admin") return "Управление";
-    return user ? `Привет, ${user.name.split(" ")[0]}` : "Август в движении";
-  }, [tab, user]);
-
-  function showToast(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast(""), 2400);
-  }
-
-  function registerUser() {
-    const cleanName = name.trim();
-    if (cleanName.length < 2) {
-      showToast("Укажите имя участника");
-      return;
-    }
-
-    const nextUser: User = {
-      name: cleanName,
-      department: department.trim(),
-      registeredAt: new Date().toISOString(),
-    };
-    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
-    setUser(nextUser);
-    setShowRegistration(false);
-    showToast("Регистрация завершена");
-  }
-
-  function submitCheckin() {
-    if (checkedIn || !user) return;
-    const nextActivity: Activity = {
-      id: Date.now(),
-      title: `${activity}${note.trim() ? ` · ${note.trim()}` : ""}`,
-      meta: `${new Date().toLocaleDateString("ru-RU")} · подтверждено`,
-      icon: "✓",
-    };
-    const nextActivities = [nextActivity, ...activities];
-    setActivities(nextActivities);
-    setCheckedIn(true);
-    setShowCheckin(false);
-    setNote("");
-    localStorage.setItem(ACTIVITIES_KEY, JSON.stringify(nextActivities));
-    localStorage.setItem(CHECKIN_KEY, new Date().toISOString().slice(0, 10));
-    showToast("Активность засчитана");
-  }
-
-  function resetContest() {
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(ACTIVITIES_KEY);
-    localStorage.removeItem(CHECKIN_KEY);
-    setUser(null);
-    setActivities([]);
-    setCheckedIn(false);
-    setName("");
-    setDepartment("");
-    setShowReset(false);
-    setShowRegistration(true);
-    setTab("today");
-    showToast("Конкурс полностью очищен");
-  }
-
-  function downloadCsv() {
-    const rows = [["Участник", "Подразделение", "Активных дней", "Дата регистрации"]];
-    if (user) rows.push([user.name, user.department || "—", String(days), new Date(user.registeredAt).toLocaleString("ru-RU")]);
-    const csv = "\uFEFF" + rows.map((row) => row.join(";")).join("\n");
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    link.download = "avgust-v-dvizhenii.csv";
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-
-  if (!hydrated) return <main className="app-shell" />;
-
-  return (
-    <main className="app-shell">
-      <section className="phone">
-        <header className="topbar">
-          <button className="brand" onClick={() => setTab("today")} aria-label="На главную">
-            <span className="brand-mark">А</span>
-            <span>АВГУСТ<br /><b>В ДВИЖЕНИИ</b></span>
-          </button>
-          <button className="avatar" onClick={() => user ? setTab("progress") : setShowRegistration(true)} aria-label="Открыть профиль">{initials}</button>
-        </header>
-
-        <div className="page-heading">
-          <p>{tab === "admin" ? "Панель организатора" : "Новый конкурс · чистый старт"}</p>
-          <h1>{title}</h1>
-        </div>
-
-        {tab === "today" && (
-          <div className="view">
-            <section className="hero-card">
-              <div className="hero-top">
-                <div>
-                  <span className="eyebrow">{checkedIn ? "Сегодня готово" : "Начните новую серию"}</span>
-                  <h2><strong>{streak}</strong> дней подряд</h2>
-                </div>
-                <div className="streak-orbit"><span>↗</span></div>
-              </div>
-              <div className="week-row">
-                {emptyWeek.map((item) => (
-                  <div className={`day ${item.today ? "today" : ""} ${checkedIn && item.today ? "done" : ""}`} key={item.date}>
-                    <span>{item.day}</span><b>{checkedIn && item.today ? "✓" : item.date}</b>
-                  </div>
-                ))}
-              </div>
-              <button className={`primary ${checkedIn ? "complete" : ""}`} onClick={() => user ? !checkedIn && setShowCheckin(true) : setShowRegistration(true)}>
-                {!user ? "Зарегистрироваться" : checkedIn ? "✓ Активность уже засчитана" : "Отметить активность"}
-              </button>
-              <small>{user ? "Одна зачётная отметка в день" : "Сначала создайте профиль участника"}</small>
-            </section>
-
-            <section className="section">
-              <div className="section-title"><h3>Ваш прогресс</h3><button onClick={() => setTab("progress")}>Подробнее</button></div>
-              <div className="stats-grid">
-                <article><span>Активных дней</span><b>{days}<i>/31</i></b><div className="bar"><i style={{ width: `${Math.min(100, days / 31 * 100)}%` }} /></div></article>
-                <article><span>До розыгрыша</span><b>{Math.max(0, 20 - days)}<i>дней</i></b><p>Нужно 20 активных дней</p></article>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {tab === "progress" && (
-          <div className="view">
-            <section className="progress-hero">
-              <div className="ring" style={{ "--progress": `${Math.min(360, days / 31 * 360)}deg` } as React.CSSProperties}><div><b>{days}</b><span>из 31 дня</span></div></div>
-              <div><span className="eyebrow">{user ? "Вы зарегистрированы" : "Нет профиля"}</span><h2>{user?.name || "Создайте профиль"}</h2><p>{user?.department || "Подразделение не указано"}</p></div>
-            </section>
-            <section className="section">
-              <div className="section-title"><h3>Последняя активность</h3></div>
-              <div className="activity-list">
-                {activities.length === 0 && <article><span>○</span><div><b>Пока нет отметок</b><small>Первая активность появится здесь</small></div></article>}
-                {activities.slice(0, 10).map((item) => <article key={item.id}><span>{item.icon}</span><div><b>{item.title}</b><small>{item.meta}</small></div><i>✓</i></article>)}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {tab === "community" && (
-          <div className="view">
-            <section className="report-card">
-              <span className="eyebrow">Конкурс запущен заново</span>
-              <h2>Начинаем<br />с чистого листа</h2>
-              <div className="report-stats"><div><b>{user ? 1 : 0}</b><span>зарегистрировано</span></div><div><b>{days}</b><span>активных дней вместе</span></div></div>
-            </section>
-            <section className="section">
-              <div className="section-title"><h3>Участники</h3><span>Демо-данные удалены</span></div>
-              <div className="people-list">
-                {!user && <article><span className="person-avatar">?</span><div><b>Участников пока нет</b><small>Зарегистрируйтесь первым</small></div></article>}
-                {user && <article><span className="person-avatar">{initials.slice(0, 1)}</span><div><b>{user.name}</b><small>{days} активных дней</small></div><span className="series">↗ {streak} дней</span></article>}
-              </div>
-            </section>
-          </div>
-        )}
-
-        {tab === "admin" && (
-          <div className="view admin-view">
-            <section className="admin-summary">
-              <article><span>В игре</span><b>{user ? 1 : 0}</b><small>реальных регистраций в этом браузере</small></article>
-              <article><span>Отметок</span><b>{days}</b><small>без демонстрационных данных</small></article>
-            </section>
-            <section className="section">
-              <div className="section-title"><h3>Настройки проекта</h3></div>
-              <div className="settings-list">
-                <label><div><b>Вечернее напоминание</b><small>Ежедневно</small></div><input aria-label="Время напоминания" type="time" value={schedule} onChange={(e) => setSchedule(e.target.value)} /></label>
-                <button onClick={downloadCsv}><span>⇩</span><div><b>Выгрузить статистику</b><small>CSV</small></div><i>›</i></button>
-                <button onClick={() => setShowReset(true)} style={{ color: "#a52a2a" }}><span>↺</span><div><b>Начать конкурс заново</b><small>Удалить профиль и все отметки</small></div><i>›</i></button>
-              </div>
-            </section>
-          </div>
-        )}
-
-        <nav className="bottom-nav" aria-label="Основная навигация">
-          <button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}><span>⌂</span>Сегодня</button>
-          <button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}><span>◴</span>Прогресс</button>
-          <button className={tab === "community" ? "active" : ""} onClick={() => setTab("community")}><span>◌</span>Вместе</button>
-          <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}><span>⌘</span>Админ</button>
-        </nav>
-      </section>
-
-      {showRegistration && <div className="modal-backdrop">
-        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="registration-title">
-          {user && <button className="modal-close" onClick={() => setShowRegistration(false)} aria-label="Закрыть">×</button>}
-          <span className="eyebrow">Регистрация участника</span>
-          <h2 id="registration-title">Давайте знакомиться</h2>
-          <label className="note-field">Имя и фамилия<input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Илья Рощупкин" /></label>
-          <label className="note-field">Подразделение<input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Необязательно" /></label>
-          <button className="primary" onClick={registerUser}>Вступить в конкурс</button>
-          <small style={{ display: "block", marginTop: 12, textAlign: "center" }}>Сейчас профиль сохраняется только в этом браузере</small>
-        </section>
-      </div>}
-
-      {showCheckin && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowCheckin(false)}>
-        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="checkin-title">
-          <button className="modal-close" onClick={() => setShowCheckin(false)} aria-label="Закрыть">×</button>
-          <span className="eyebrow">Активность дня</span><h2 id="checkin-title">Что сегодня делали?</h2>
-          <div className="activity-options">{["Бег", "Прогулка", "Йога", "Велосипед"].map((item) => <button className={activity === item ? "active" : ""} onClick={() => setActivity(item)} key={item}>{item}</button>)}</div>
-          <label className="note-field">Коротко об активности<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Например: 5 км в парке" /></label>
-          <button className="primary" onClick={submitCheckin}>Засчитать день</button>
-        </section>
-      </div>}
-
-      {showReset && <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setShowReset(false)}>
-        <section className="modal" role="dialog" aria-modal="true" aria-labelledby="reset-title">
-          <button className="modal-close" onClick={() => setShowReset(false)} aria-label="Закрыть">×</button>
-          <span className="eyebrow">Необратимое действие</span><h2 id="reset-title">Начать конкурс заново?</h2>
-          <p>Будут удалены профиль участника и все отметки активности в этом браузере.</p>
-          <button className="primary" onClick={resetContest}>Да, очистить всё</button>
-          <button onClick={() => setShowReset(false)} style={{ width: "100%", marginTop: 10, border: 0, background: "transparent", padding: 12, cursor: "pointer" }}>Отмена</button>
-        </section>
-      </div>}
-
-      {toast && <div className="toast">✓ {toast}</div>}
-    </main>
-  );
+type Activity = { id:number; activityDate:string; activityType:string; description:string|null };
+type Me = { registered:boolean; role:"participant"|"admin"; profile:null|{displayName:string;department:string|null;registeredAt:string;isActive:boolean}; stats:{activeDays:number;current:number;max:number;checkedInToday:boolean} };
+type Person={id:number;displayName:string;department:string|null;registeredAt:string;isActive:boolean;activeDays:number;current:number;max:number};
+type Community={registeredParticipants:number;activeParticipants:number;totalActiveDays:number;participants:Person[]};
+type AdminStats={totalRegistrations:number;activeParticipants:number;checkinsToday:number;totalActivities:number};
+const emptyCommunity:Community={registeredParticipants:0,activeParticipants:0,totalActiveDays:0,participants:[]};
+async function api<T>(url:string, options?:RequestInit):Promise<T>{const response=await fetch(url,{...options,headers:{"content-type":"application/json",...options?.headers}});const body=await response.json();if(!response.ok)throw new Error(body.error||"Ошибка сервера");return body;}
+export default function Home(){
+ const [tab,setTab]=useState<Tab>("today"),[me,setMe]=useState<Me|null>(null),[activities,setActivities]=useState<Activity[]>([]),[community,setCommunity]=useState(emptyCommunity),[admin,setAdmin]=useState<AdminStats|null>(null);
+ const [loading,setLoading]=useState(true),[error,setError]=useState(""),[name,setName]=useState(""),[department,setDepartment]=useState(""),[activity,setActivity]=useState("Бег"),[note,setNote]=useState(""),[showCheckin,setShowCheckin]=useState(false),[showReset,setShowReset]=useState(false),[confirmation,setConfirmation]=useState(""),[toast,setToast]=useState("");
+ const notify=(message:string)=>{setToast(message);setTimeout(()=>setToast(""),2400)};
+ const load=useCallback(async()=>{setLoading(true);setError("");try{const telegram=(window as typeof window & {Telegram?:{WebApp?:{initData?:string;ready?:()=>void}}}).Telegram?.WebApp;telegram?.ready?.();await api("/api/auth/telegram",{method:"POST",body:JSON.stringify({initData:telegram?.initData??""})});const current=await api<Me>("/api/me");setMe(current);if(current.registered){const [{activities:items},group]=await Promise.all([api<{activities:Activity[]}>("/api/activities"),api<Community>("/api/community")]);setActivities(items);setCommunity(group);if(current.role==="admin")setAdmin(await api<AdminStats>("/api/admin/stats"));}}catch(e){setError(e instanceof Error?e.message:"Не удалось загрузить приложение")}finally{setLoading(false)}},[]);
+ useEffect(()=>{queueMicrotask(()=>void load())},[load]);
+ async function register(){try{await api("/api/register",{method:"POST",body:JSON.stringify({displayName:name,department})});notify("Регистрация завершена");await load()}catch(e){notify(e instanceof Error?e.message:"Ошибка регистрации")}}
+ async function checkin(){try{await api("/api/activities",{method:"POST",body:JSON.stringify({activityType:activity,description:note})});setShowCheckin(false);setNote("");notify("Активность засчитана");await load()}catch(e){notify(e instanceof Error?e.message:"Ошибка отметки")}}
+ async function reset(){try{await api("/api/admin/reset-contest",{method:"POST",body:JSON.stringify({confirmation})});setShowReset(false);setConfirmation("");setTab("today");notify("Создан новый конкурс");await load()}catch(e){notify(e instanceof Error?e.message:"Ошибка сброса")}}
+ const user=me?.profile,days=me?.stats.activeDays??0,streak=me?.stats.current??0,checked=me?.stats.checkedInToday??false;
+ const initials=user?.displayName.split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase()||"?";
+ const title=useMemo(()=>tab==="progress"?"Мой август":tab==="community"?"Вместе":tab==="admin"?"Управление":user?`Привет, ${user.displayName.split(" ")[0]}`:"Август в движении",[tab,user]);
+ if(loading)return <main className="app-shell"><section className="phone"><div className="page-heading"><p>Подключаемся к конкурсу…</p><h1>Загрузка</h1></div></section></main>;
+ if(error)return <main className="app-shell"><section className="phone"><div className="page-heading"><p>Не удалось открыть приложение</p><h1>{error}</h1><button className="primary" onClick={()=>void load()}>Повторить</button></div></section></main>;
+ return <main className="app-shell"><section className="phone">
+  <header className="topbar"><button className="brand" onClick={()=>setTab("today")}><span className="brand-mark">А</span><span>АВГУСТ<br/><b>В ДВИЖЕНИИ</b></span></button><button className="avatar" onClick={()=>setTab("progress")}>{initials}</button></header>
+  <div className="page-heading"><p>{tab==="admin"?"Панель организатора":"Общий конкурс · данные синхронизированы"}</p><h1>{title}</h1></div>
+  {tab==="today"&&<div className="view"><section className="hero-card"><div className="hero-top"><div><span className="eyebrow">{checked?"Сегодня готово":"Продолжайте движение"}</span><h2><strong>{streak}</strong> дней подряд</h2></div><div className="streak-orbit"><span>↗</span></div></div><button className={`primary ${checked?"complete":""}`} onClick={()=>!checked&&setShowCheckin(true)}>{checked?"✓ Активность уже засчитана":"Отметить активность"}</button><small>Одна зачётная отметка в день</small></section><section className="section"><div className="section-title"><h3>Ваш прогресс</h3></div><div className="stats-grid"><article><span>Активных дней</span><b>{days}<i>/31</i></b><div className="bar"><i style={{width:`${Math.min(100,days/31*100)}%`}}/></div></article><article><span>До розыгрыша</span><b>{Math.max(0,20-days)}<i>дней</i></b><p>Нужно 20 активных дней</p></article></div></section></div>}
+  {tab==="progress"&&<div className="view"><section className="progress-hero"><div className="ring" style={{"--progress":`${Math.min(360,days/31*360)}deg`} as React.CSSProperties}><div><b>{days}</b><span>из 31 дня</span></div></div><div><span className="eyebrow">Вы зарегистрированы</span><h2>{user?.displayName}</h2><p>{user?.department||"Подразделение не указано"}</p></div></section><section className="section"><div className="section-title"><h3>Активности</h3></div><div className="activity-list">{!activities.length&&<article><span>○</span><div><b>Пока нет отметок</b></div></article>}{activities.map(a=><article key={a.id}><span>✓</span><div><b>{a.activityType}{a.description?` · ${a.description}`:""}</b><small>{new Date(a.activityDate).toLocaleDateString("ru-RU")}</small></div></article>)}</div></section></div>}
+  {tab==="community"&&<div className="view"><section className="report-card"><span className="eyebrow">Результаты из общей базы</span><h2>Двигаемся<br/>вместе</h2><div className="report-stats"><div><b>{community.registeredParticipants}</b><span>зарегистрировано</span></div><div><b>{community.totalActiveDays}</b><span>активных дней вместе</span></div></div></section><section className="section"><div className="section-title"><h3>Участники</h3><span>{community.activeParticipants} активных</span></div><div className="people-list">{community.participants.map(p=><article key={p.id}><span className="person-avatar">{p.displayName[0]}</span><div><b>{p.displayName}</b><small>{p.department||"Без подразделения"} · {p.activeDays} дней</small></div><span className="series">↗ {p.current}</span></article>)}</div></section></div>}
+  {tab==="admin"&&me?.role==="admin"&&<div className="view admin-view"><section className="admin-summary"><article><span>Регистраций</span><b>{admin?.totalRegistrations??0}</b><small>Активных: {admin?.activeParticipants??0}</small></article><article><span>Отметок сегодня</span><b>{admin?.checkinsToday??0}</b><small>Всего: {admin?.totalActivities??0}</small></article></section><section className="section"><div className="section-title"><h3>Пользователи</h3></div><div className="people-list">{community.participants.map(p=><article key={p.id}><span className="person-avatar">{p.displayName[0]}</span><div><b>{p.displayName}</b><small>{new Date(p.registeredAt).toLocaleDateString("ru-RU")} · {p.activeDays} дней · {p.isActive?"активен":"отключен"}</small></div></article>)}</div><div className="settings-list" style={{marginTop:18}}><button onClick={()=>setShowReset(true)} style={{color:"#a52a2a"}}><span>↺</span><div><b>Начать конкурс заново</b><small>Будут удалены все участники, регистрации и активности. Действие нельзя отменить.</small></div><i>›</i></button></div></section></div>}
+  <nav className="bottom-nav"><button className={tab==="today"?"active":""} onClick={()=>setTab("today")}><span>⌂</span>Сегодня</button><button className={tab==="progress"?"active":""} onClick={()=>setTab("progress")}><span>◴</span>Прогресс</button><button className={tab==="community"?"active":""} onClick={()=>setTab("community")}><span>◌</span>Вместе</button>{me?.role==="admin"&&<button className={tab==="admin"?"active":""} onClick={()=>setTab("admin")}><span>⌘</span>Админ</button>}</nav>
+ </section>
+ {!me?.registered&&<div className="modal-backdrop"><section className="modal"><span className="eyebrow">Регистрация участника</span><h2>Давайте знакомиться</h2><label className="note-field">Имя и фамилия<input autoFocus maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label><label className="note-field">Подразделение<input maxLength={120} value={department} onChange={e=>setDepartment(e.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={()=>void register()}>Вступить в конкурс</button><small>Профиль сохраняется в общей базе конкурса</small></section></div>}
+ {showCheckin&&<div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={()=>setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><div className="activity-options">{["Бег","Прогулка","Йога","Велосипед"].map(x=><button className={activity===x?"active":""} onClick={()=>setActivity(x)} key={x}>{x}</button>)}</div><label className="note-field">Коротко об активности<input maxLength={300} value={note} onChange={e=>setNote(e.target.value)}/></label><button className="primary" onClick={()=>void checkin()}>Засчитать день</button></section></div>}
+ {showReset&&<div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={()=>setShowReset(false)}>×</button><span className="eyebrow">Необратимое действие</span><h2>Начать конкурс заново</h2><p>Будут удалены все участники, регистрации и активности. Действие нельзя отменить.</p><label className="note-field">Введите «НАЧАТЬ ЗАНОВО»<input value={confirmation} onChange={e=>setConfirmation(e.target.value)}/></label><button className="primary danger" disabled={confirmation!=="НАЧАТЬ ЗАНОВО"} onClick={()=>void reset()}>Начать конкурс заново</button></section></div>}
+ {toast&&<div className="toast">{toast}</div>}</main>;
 }

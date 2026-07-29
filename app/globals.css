@@ -152,3 +152,7 @@ button { color: inherit; }
   .phone { width: 560px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+.bottom-nav:has(button:nth-child(4)) { grid-template-columns: repeat(4,1fr); }
+.bottom-nav:not(:has(button:nth-child(4))) { grid-template-columns: repeat(3,1fr); }
+.primary.danger { background: #a52a2a; color: white; }
+.primary:disabled { opacity: .45; cursor: not-allowed; }
