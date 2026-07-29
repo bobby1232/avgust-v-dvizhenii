@@ -1,0 +1,24 @@
+import type { Metadata } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  metadataBase: new URL("https://avgust-v-dvizhenii.sites.openai.com"),
+  title: "Август в движении",
+  description: "Telegram Mini App для спортивного соревнования",
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  openGraph: {
+    title: "Август в движении",
+    description: "31 день в своём ритме",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Август в движении" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Август в движении",
+    description: "31 день в своём ритме",
+    images: ["/og.png"],
+  },
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="ru"><body>{children}</body></html>;
+}
