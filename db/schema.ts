@@ -1,5 +1,11 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, date, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, customType, date, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+
+const bigintString = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return "bigint";
+  },
+});
 
 export const userRole = pgEnum("user_role", ["participant", "admin"]);
 
@@ -15,7 +21,7 @@ export const competitions = pgTable("competitions", {
 
 export const users = pgTable("users", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
-  telegramId: bigint("telegram_id", { mode: "string" }).notNull().unique(),
+  telegramId: bigintString("telegram_id").notNull().unique(),
   telegramUsername: varchar("telegram_username", { length: 64 }),
   firstName: varchar("first_name", { length: 128 }),
   lastName: varchar("last_name", { length: 128 }),
@@ -45,7 +51,7 @@ export const activities = pgTable("activities", {
 
 export const auditLogs = pgTable("audit_logs", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
-  actorTelegramId: bigint("actor_telegram_id", { mode: "string" }),
+  actorTelegramId: bigintString("actor_telegram_id"),
   action: varchar("action", { length: 80 }).notNull(),
   entityType: varchar("entity_type", { length: 80 }),
   entityId: text("entity_id"),
