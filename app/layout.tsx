@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avgust-v-dvizhenii.sites.openai.com"),
+  metadataBase: new URL("https://avgust-v-dvizhenii.ilya777999.chatgpt.site"),
   title: "Август в движении",
   description: "Telegram Mini App для спортивного соревнования",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
