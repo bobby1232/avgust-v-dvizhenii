@@ -3,7 +3,7 @@ import "./globals.css";
 import "./database.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avgust-v-dvizhenii.ilya777999.chatgpt.site"),
+  metadataBase: new URL("https://avgust-v-dvizhenii-production.up.railway.app"),
   title: "Август в движении",
   description: "Telegram Mini App для спортивного соревнования",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
@@ -30,7 +30,7 @@ const telegramBootstrap = `
       try { webApp.ready(); } catch (_) {}
       try { webApp.expand(); } catch (_) {}
       clearInterval(timer);
-    } else if (attempts >= 100) {
+    } else if (attempts >= 200) {
       clearInterval(timer);
     }
   }, 50);
@@ -41,7 +41,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ru">
       <head>
-        <script src="https://telegram.org/js/telegram-web-app.js?59" />
+        <script src="https://telegram.org/js/telegram-web-app.js?59" defer />
         <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
       </head>
       <body>{children}</body>
