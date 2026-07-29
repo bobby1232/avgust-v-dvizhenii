@@ -1,0 +1,17 @@
+node_modules
+.next
+.vinext
+dist
+out
+.wrangler
+.git
+.gitignore
+.env
+.env.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+coverage
+outputs
+work
