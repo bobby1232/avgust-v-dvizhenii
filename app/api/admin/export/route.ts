@@ -9,14 +9,8 @@ import {
   users,
 } from "@/db/schema";
 import { ApiError, jsonError, requireAdmin } from "@/lib/api";
-import { activeCompetition, userStats } from "@/lib/data";
-
-function safeCell(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  let text = typeof value === "object" ? JSON.stringify(value) : String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
-  return `"${text.replaceAll('"', '""')}"`;
-}
+import { activeCompetition, communityData, favoriteActivity } from "@/lib/data";
+import { safeCsvCell } from "@/lib/csv";
 
 function dateCell(value: Date | string | null): string {
   if (!value) return "";
@@ -28,8 +22,8 @@ function dateCell(value: Date | string | null): string {
 function section(name: string, headers: string[], rows: unknown[][]): string {
   return [
     name,
-    headers.map(safeCell).join(";"),
-    ...rows.map((row) => row.map(safeCell).join(";")),
+    headers.map(safeCsvCell).join(";"),
+    ...rows.map((row) => row.map(safeCsvCell).join(";")),
     "",
   ].join("\r\n");
 }
@@ -40,8 +34,13 @@ export async function GET(request: Request) {
     const format = new URL(request.url).searchParams.get("format") ?? "csv";
     if (format !== "csv") throw new ApiError(400, "MVP поддерживает формат csv", "UNSUPPORTED_FORMAT");
     const competition = await activeCompetition();
-    const [participants, activityRows, achievementRows, audits] = await Promise.all([
-      db.select().from(users).orderBy(asc(users.displayName)),
+    const [community, participantProfiles, activityRows, achievementRows, audits] = await Promise.all([
+      communityData(true),
+      db.select({
+        id: users.id,
+        telegramId: users.telegramId,
+        telegramUsername: users.telegramUsername,
+      }).from(users),
       db.select({
         activity: activities,
         participant: users.displayName,
@@ -61,16 +60,31 @@ export async function GET(request: Request) {
         .where(eq(userAchievements.competitionId, competition.id)),
       db.select().from(auditLogs).orderBy(asc(auditLogs.createdAt)),
     ]);
-    const participantRows = await Promise.all(participants.map(async (participant) => {
-      const stats = await userStats(participant.id, competition.id);
+    const approvedByUser = new Map<number, Array<{ activityType: string; customActivityName: string | null; durationMinutes: number }>>();
+    const profileById = new Map(participantProfiles.map((profile) => [profile.id, profile]));
+    for (const { activity } of activityRows) {
+      if (activity.status !== "approved") continue;
+      approvedByUser.set(activity.userId, [
+        ...(approvedByUser.get(activity.userId) ?? []),
+        {
+          activityType: activity.activityType,
+          customActivityName: activity.customActivityName,
+          durationMinutes: activity.durationMinutes,
+        },
+      ]);
+    }
+    const participantRows = community.participants.map((participant) => {
+      const approved = approvedByUser.get(participant.id) ?? [];
+      const profile = profileById.get(participant.id);
+      const totalDurationMinutes = approved.reduce((sum, item) => sum + item.durationMinutes, 0);
       return [
-        participant.telegramId, participant.telegramUsername, participant.displayName,
+        profile?.telegramId, profile?.telegramUsername, participant.displayName,
         participant.department, dateCell(participant.registeredAt), participant.isActive,
-        participant.notificationsEnabled, stats.activeDays, stats.currentStreak, stats.maxStreak,
-        stats.missedDays, stats.achievementCount, stats.favoriteActivity, stats.totalDurationMinutes,
-        participant.isActive && stats.activeDays >= 20, stats.activeDays === 31,
+        participant.notificationsEnabled, participant.activeDays, participant.currentStreak, participant.maxStreak,
+        participant.missedDays, participant.achievementCount, favoriteActivity(approved), totalDurationMinutes,
+        participant.isActive && participant.activeDays >= 20, participant.activeDays === 31,
       ];
-    }));
+    });
     const csv = "\uFEFF" + [
       section("Participants", [
         "telegram_id", "username", "display_name", "department", "registered_at", "is_active",

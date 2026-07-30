@@ -9,8 +9,8 @@ import {
   users,
 } from "@/db/schema";
 import { ApiError } from "./api";
-import { getCompetitionDate } from "./competition-time.ts";
-import { calculateProgress } from "./progress-service.ts";
+import { getCompetitionDate } from "./competition-time";
+import { calculateProgress } from "./progress-service";
 
 export async function activeCompetition() {
   const [competition] = await db.select().from(competitions).where(eq(competitions.isActive, true)).limit(1);
@@ -42,7 +42,9 @@ export function favoriteActivity(
 }
 
 export async function userStats(userId: number, competitionId: number) {
-  const competition = await activeCompetition();
+  const [competition] = await db.select().from(competitions)
+    .where(eq(competitions.id, competitionId)).limit(1);
+  if (!competition) throw new ApiError(404, "Конкурс не найден", "COMPETITION_NOT_FOUND");
   const [days, approvedActivities, achievements] = await Promise.all([
     db.select({ date: activityDays.activityDate }).from(activityDays).where(and(
       eq(activityDays.userId, userId),
@@ -86,10 +88,12 @@ export async function userStats(userId: number, competitionId: number) {
   };
 }
 
-export async function communityData() {
+export async function communityData(includeInactive = false) {
   const competition = await activeCompetition();
   const [userRows, dayRows, achievementRows] = await Promise.all([
-    db.select().from(users).orderBy(desc(users.registeredAt)),
+    db.select().from(users)
+      .where(includeInactive ? undefined : eq(users.isActive, true))
+      .orderBy(desc(users.registeredAt)),
     db.select({ userId: activityDays.userId, date: activityDays.activityDate }).from(activityDays)
       .where(eq(activityDays.competitionId, competition.id)),
     db.select({ userId: userAchievements.userId }).from(userAchievements).where(and(
@@ -132,9 +136,9 @@ export async function adminStats() {
   const community = await communityData();
   const today = getCompetitionDate(new Date(), community.competition.timezone);
   const [todayRows, allRows] = await Promise.all([
-    db.select({ id: activities.id }).from(activities).where(and(
-      eq(activities.competitionId, community.competition.id),
-      eq(activities.activityDate, today),
+    db.select({ id: activityDays.id }).from(activityDays).where(and(
+      eq(activityDays.competitionId, community.competition.id),
+      eq(activityDays.activityDate, today),
     )),
     db.select({ id: activities.id }).from(activities).where(eq(activities.competitionId, community.competition.id)),
   ]);

@@ -12,10 +12,13 @@ import {
   competitionPhase,
   getCompetitionDate,
   isCompetitionDay,
-} from "./competition-time.ts";
-import { calculateProgress } from "./progress-service.ts";
-import { awardStreakAchievements } from "./achievement-service";
-import { revokeUnearnedAutomaticAchievements } from "./achievement-service";
+} from "./competition-time";
+import { calculateProgress } from "./progress-service";
+import {
+  awardActivityAchievements,
+  awardStreakAchievements,
+  revokeUnearnedAutomaticAchievements,
+} from "./achievement-service";
 
 type User = typeof users.$inferSelect;
 type Competition = {
@@ -30,6 +33,12 @@ type ActivityInput = {
   durationMinutes: number;
   description?: string;
 };
+
+export async function assertActiveActivityType(activityType: string) {
+  const [knownType] = await db.select({ id: activityTypes.id }).from(activityTypes)
+    .where(and(eq(activityTypes.name, activityType), eq(activityTypes.isActive, true))).limit(1);
+  if (!knownType) throw new ApiError(400, "Выберите вид активности из справочника", "UNKNOWN_ACTIVITY_TYPE");
+}
 
 export async function createParticipantActivity(
   user: User,
@@ -47,9 +56,7 @@ export async function createParticipantActivity(
   if (!isCompetitionDay(activityDate, competition)) {
     throw new ApiError(409, "Текущий день находится за пределами конкурса", "OUTSIDE_COMPETITION");
   }
-  const [knownType] = await db.select({ id: activityTypes.id }).from(activityTypes)
-    .where(and(eq(activityTypes.name, input.activityType), eq(activityTypes.isActive, true))).limit(1);
-  if (!knownType) throw new ApiError(400, "Выберите вид активности из справочника", "UNKNOWN_ACTIVITY_TYPE");
+  await assertActiveActivityType(input.activityType);
 
   const [[{ value: dailyCount }], created] = await db.transaction(async (tx) => {
     const counts = await tx.select({ value: count() }).from(activities).where(and(
@@ -96,9 +103,16 @@ export async function createParticipantActivity(
   const awardedAchievements = await awardStreakAchievements(
     competition.id,
     user.id,
-    progress.currentStreak,
+    progress.maxStreak,
   );
-  return { activity: created, progress, awardedAchievements, dailyCount: dailyCount + 1 };
+  const activityAchievements = await awardActivityAchievements(
+    competition.id, user.id, competition.startDate, competition.timezone);
+  return {
+    activity: created,
+    progress,
+    awardedAchievements: [...awardedAchievements, ...activityAchievements],
+    dailyCount: dailyCount + 1,
+  };
 }
 
 export async function rebuildActivityDayAndAchievements(
@@ -137,6 +151,8 @@ export async function rebuildActivityDayAndAchievements(
   ));
   const progress = calculateProgress(dates.map((item) => item.date), competition);
   const awardedAchievements = await awardStreakAchievements(competition.id, userId, progress.maxStreak);
+  const activityAchievements = await awardActivityAchievements(
+    competition.id, userId, competition.startDate, competition.timezone);
   await revokeUnearnedAutomaticAchievements(competition.id, userId, progress.maxStreak, actorUserId);
-  return { progress, awardedAchievements };
+  return { progress, awardedAchievements: [...awardedAchievements, ...activityAchievements] };
 }

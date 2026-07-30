@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { activities, activityTypes } from "@/db/schema";
-import { requireSession, jsonError, ApiError } from "@/lib/api";
+import { requireSession, jsonError, ApiError, zodDetails } from "@/lib/api";
 import { activeCompetition, registeredUser } from "@/lib/data";
 import { activitySchema } from "@/lib/validation";
 import { createParticipantActivity } from "@/lib/activity-service";
@@ -41,15 +41,7 @@ export async function POST(request: Request) {
     const parsed = activitySchema.safeParse(await request.json());
 
     if (!parsed.success) {
-      throw new ApiError(400, "Некорректная активность", "VALIDATION_ERROR");
-    }
-
-    if (parsed.data.activityDate) {
-      throw new ApiError(
-        400,
-        "Дату активности определяет сервер по московскому времени",
-        "ACTIVITY_DATE_NOT_TODAY",
-      );
+      throw new ApiError(400, "Проверьте данные активности", "VALIDATION_ERROR", zodDetails(parsed.error));
     }
 
     const [user, competition] = await Promise.all([

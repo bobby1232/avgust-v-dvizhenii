@@ -22,6 +22,13 @@
       "when": 1785427200000,
       "tag": "0002_gosup_games_mvp",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785430800000,
+      "tag": "0003_phase0_schema_repair",
+      "breakpoints": true
     }
   ]
 }

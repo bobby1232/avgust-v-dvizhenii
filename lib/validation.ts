@@ -12,7 +12,6 @@ export const activitySchema = z.object({
   customActivityName: z.string().trim().max(120).optional().default(""),
   durationMinutes: z.number().int().min(20, "Для зачёта активность должна продолжаться не менее 20 минут.").max(1440),
   description: z.string().trim().max(300).optional().default(""),
-  activityDate: z.iso.date().optional(),
 }).superRefine((value, context) => {
   if (value.activityType === "Другое" && !value.customActivityName) {
     context.addIssue({ code: "custom", path: ["customActivityName"], message: "Укажите название активности" });
@@ -40,3 +39,14 @@ export const adminUserPatchSchema = z.object({
   comment: z.string().trim().max(500).optional(),
 });
 export const resetSchema = z.object({ confirmation: z.literal("НАЧАТЬ ЗАНОВО") });
+export const createCompetitionSchema = z.object({
+  name: trimmed(160),
+  startDate: z.iso.date(),
+  endDate: z.iso.date(),
+  timezone: trimmed(64).default("Europe/Moscow"),
+  reminderTime: z.string().regex(/^\d{2}:\d{2}$/, "Используйте формат ЧЧ:ММ").default("20:00"),
+  comment: trimmed(500),
+}).refine((value) => value.endDate >= value.startDate, {
+  path: ["endDate"],
+  message: "Дата окончания должна быть не раньше даты начала",
+});

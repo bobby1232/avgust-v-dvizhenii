@@ -9,7 +9,7 @@ import { adminUserPatchSchema } from "@/lib/validation";
 export async function GET() {
   try {
     await requireAdmin();
-    const { participants } = await communityData();
+    const { participants } = await communityData(true);
     return NextResponse.json({ users: participants });
   } catch (error) {
     return jsonError(error, "admin.users");
