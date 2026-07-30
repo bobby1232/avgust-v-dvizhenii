@@ -41,7 +41,7 @@ button { color: inherit; }
 .day.today b { border-style: dashed; }
 .primary { width: 100%; min-height: 52px; border: 0; border-radius: 16px; background: var(--lime); color: var(--green); font-weight: 800; cursor: pointer; transition: transform .18s, opacity .18s; }
 .primary:hover { transform: translateY(-1px); }
-.primary.complete { background: rgba(255,255,255,.12); color: white; cursor: default; }
+.primary.complete { background: rgba(255,255,255,.12); color: white; }
 .hero-card small { display: block; margin: 10px 0 -2px; text-align: center; color: rgba(255,255,255,.52); font-size: 10px; }
 .section { padding: 0 22px; }
 .section-title { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
