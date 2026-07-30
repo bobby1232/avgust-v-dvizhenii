@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import TelegramGate from "./telegram-gate";
 import "./globals.css";
 import "./database.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://avgust-v-dvizhenii-production.up.railway.app"),
+  metadataBase: new URL(process.env.APP_URL ?? "https://august.rilabs.tech"),
   title: "Август в движении",
   description: "Telegram Mini App для спортивного соревнования",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
@@ -73,13 +74,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ru">
       <head>
         <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
-        {/* The Telegram CDN must never sit in front of Next's deferred client
-            bundles: an unavailable SDK otherwise leaves mobile WebViews on a
-            permanently non-interactive loading screen. The inline bootstrap
-            above and the URL-hash fallback in the client make async safe. */}
-        <script src="https://telegram.org/js/telegram-web-app.js?59" async />
+        {/* Keep the SDK asynchronous so an unavailable Telegram CDN cannot block
+            the document. TelegramGate waits for mobile initData before mounting
+            the application, removing the desktop-fast/mobile-slow race. */}
+        <script src="https://telegram.org/js/telegram-web-app.js?63" async />
       </head>
-      <body>{children}</body>
+      <body><TelegramGate>{children}</TelegramGate></body>
     </html>
   );
 }
