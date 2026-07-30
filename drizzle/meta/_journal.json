@@ -15,6 +15,13 @@
       "when": 1785412800000,
       "tag": "0001_multiple_daily_activities",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785427200000,
+      "tag": "0002_gosup_games_mvp",
+      "breakpoints": true
     }
   ]
 }

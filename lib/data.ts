@@ -1,48 +1,147 @@
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
-import { activities, competitions, users } from "@/db/schema";
+import {
+  activities,
+  activityDays,
+  achievementDefinitions,
+  competitions,
+  userAchievements,
+  users,
+} from "@/db/schema";
 import { ApiError } from "./api";
+import { getCompetitionDate } from "./competition-time.ts";
+import { calculateProgress } from "./progress-service.ts";
 
 export async function activeCompetition() {
   const [competition] = await db.select().from(competitions).where(eq(competitions.isActive, true)).limit(1);
   if (!competition) throw new ApiError(409, "Активный конкурс не найден", "NO_ACTIVE_COMPETITION");
   return competition;
 }
+
 export async function registeredUser(telegramId: string) {
   const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
   if (!user) throw new ApiError(409, "Сначала пройдите регистрацию", "NOT_REGISTERED");
   return user;
 }
-export function streaks(dates: string[], today = new Date().toISOString().slice(0, 10)) {
-  const unique = [...new Set(dates)].sort(); let max = 0; let run = 0; let previous = "";
-  for (const date of unique) { const diff = previous ? (Date.parse(date) - Date.parse(previous)) / 86_400_000 : 0; run = !previous || diff === 1 ? run + 1 : 1; max = Math.max(max, run); previous = date; }
-  let current = 0; let cursor = today;
-  const set = new Set(unique); if (!set.has(cursor)) cursor = new Date(Date.parse(cursor) - 86_400_000).toISOString().slice(0, 10);
-  while (set.has(cursor)) { current++; cursor = new Date(Date.parse(cursor) - 86_400_000).toISOString().slice(0, 10); }
-  return { current, max };
+
+export function favoriteActivity(
+  rows: Array<{ activityType: string; customActivityName: string | null; durationMinutes: number }>,
+): string | null {
+  const totals = new Map<string, { count: number; duration: number }>();
+  for (const row of rows) {
+    const name = row.activityType === "Другое" && row.customActivityName
+      ? row.customActivityName
+      : row.activityType;
+    const value = totals.get(name) ?? { count: 0, duration: 0 };
+    value.count += 1;
+    value.duration += row.durationMinutes;
+    totals.set(name, value);
+  }
+  return [...totals].sort((a, b) =>
+    b[1].count - a[1].count || b[1].duration - a[1].duration || a[0].localeCompare(b[0], "ru"))[0]?.[0] ?? null;
 }
+
 export async function userStats(userId: number, competitionId: number) {
-  const rows = await db.select({ date: activities.activityDate }).from(activities).where(and(eq(activities.userId, userId), eq(activities.competitionId, competitionId))).orderBy(asc(activities.activityDate));
-  const dates = [...new Set(rows.map((row) => row.date))];
-  return { activeDays: dates.length, ...streaks(dates), checkedInToday: dates.includes(new Date().toISOString().slice(0, 10)) };
+  const competition = await activeCompetition();
+  const [days, approvedActivities, achievements] = await Promise.all([
+    db.select({ date: activityDays.activityDate }).from(activityDays).where(and(
+      eq(activityDays.userId, userId),
+      eq(activityDays.competitionId, competitionId),
+    )).orderBy(asc(activityDays.activityDate)),
+    db.select({
+      activityType: activities.activityType,
+      customActivityName: activities.customActivityName,
+      durationMinutes: activities.durationMinutes,
+    }).from(activities).where(and(
+      eq(activities.userId, userId),
+      eq(activities.competitionId, competitionId),
+      eq(activities.status, "approved"),
+    )),
+    db.select({
+      id: userAchievements.id,
+      code: achievementDefinitions.code,
+      name: achievementDefinitions.name,
+      description: achievementDefinitions.description,
+      emoji: achievementDefinitions.emoji,
+      awardedAt: userAchievements.awardedAt,
+    }).from(userAchievements).innerJoin(
+      achievementDefinitions,
+      eq(userAchievements.achievementId, achievementDefinitions.id),
+    ).where(and(
+      eq(userAchievements.userId, userId),
+      eq(userAchievements.competitionId, competitionId),
+      isNull(userAchievements.revokedAt),
+    )).orderBy(desc(userAchievements.awardedAt)),
+  ]);
+  const progress = calculateProgress(days.map((row) => row.date), competition);
+  const totalDurationMinutes = approvedActivities.reduce((sum, row) => sum + row.durationMinutes, 0);
+  return {
+    ...progress,
+    current: progress.currentStreak,
+    max: progress.maxStreak,
+    favoriteActivity: favoriteActivity(approvedActivities),
+    totalDurationMinutes,
+    achievementCount: achievements.length,
+    achievements,
+  };
 }
+
 export async function communityData() {
   const competition = await activeCompetition();
-  const rows = await db.select({ id: users.id, displayName: users.displayName, department: users.department, registeredAt: users.registeredAt, isActive: users.isActive, date: activities.activityDate })
-    .from(users).leftJoin(activities, and(eq(activities.userId, users.id), eq(activities.competitionId, competition.id))).orderBy(desc(users.registeredAt), asc(activities.activityDate));
-  const map = new Map<number, { id: number; displayName: string; department: string | null; registeredAt: Date; isActive: boolean; dates: string[] }>();
-  for (const row of rows) { const item = map.get(row.id) ?? { id: row.id, displayName: row.displayName, department: row.department, registeredAt: row.registeredAt, isActive: row.isActive, dates: [] }; if (row.date) item.dates.push(row.date); map.set(row.id, item); }
-  const participants = [...map.values()].map(({ dates, ...user }) => {
-    const uniqueDates = [...new Set(dates)];
-    return { ...user, activeDays: uniqueDates.length, ...streaks(uniqueDates) };
-  });
-  return { competition, registeredParticipants: participants.length, activeParticipants: participants.filter((p) => p.activeDays > 0).length, totalActiveDays: participants.reduce((sum, p) => sum + p.activeDays, 0), participants };
-}
-export async function adminStats() {
-  const community = await communityData(); const today = new Date().toISOString().slice(0, 10);
-  const [[{ value: checkinsToday }], [{ value: totalActivities }]] = await Promise.all([
-    db.select({ value: count() }).from(activities).where(and(eq(activities.competitionId, community.competition.id), eq(activities.activityDate, today))),
-    db.select({ value: count() }).from(activities).where(eq(activities.competitionId, community.competition.id)),
+  const [userRows, dayRows, achievementRows] = await Promise.all([
+    db.select().from(users).orderBy(desc(users.registeredAt)),
+    db.select({ userId: activityDays.userId, date: activityDays.activityDate }).from(activityDays)
+      .where(eq(activityDays.competitionId, competition.id)),
+    db.select({ userId: userAchievements.userId }).from(userAchievements).where(and(
+      eq(userAchievements.competitionId, competition.id),
+      isNull(userAchievements.revokedAt),
+    )),
   ]);
-  return { totalRegistrations: community.registeredParticipants, activeParticipants: community.activeParticipants, checkinsToday, totalActivities };
+  const datesByUser = new Map<number, string[]>();
+  for (const row of dayRows) datesByUser.set(row.userId, [...(datesByUser.get(row.userId) ?? []), row.date]);
+  const achievementsByUser = new Map<number, number>();
+  for (const row of achievementRows) achievementsByUser.set(row.userId, (achievementsByUser.get(row.userId) ?? 0) + 1);
+  const participants = userRows.map((user) => {
+    const progress = calculateProgress(datesByUser.get(user.id) ?? [], competition);
+    return {
+      id: user.id,
+      displayName: user.displayName,
+      department: user.department,
+      registeredAt: user.registeredAt,
+      isActive: user.isActive,
+      notificationsEnabled: user.notificationsEnabled,
+      ...progress,
+      current: progress.currentStreak,
+      max: progress.maxStreak,
+      achievementCount: achievementsByUser.get(user.id) ?? 0,
+    };
+  }).sort((a, b) =>
+    b.activeDays - a.activeDays ||
+    b.currentStreak - a.currentStreak ||
+    a.displayName.localeCompare(b.displayName, "ru"));
+  return {
+    competition,
+    registeredParticipants: participants.length,
+    activeParticipants: participants.filter((participant) => participant.activeDays > 0).length,
+    totalActiveDays: participants.reduce((sum, participant) => sum + participant.activeDays, 0),
+    participants,
+  };
+}
+
+export async function adminStats() {
+  const community = await communityData();
+  const today = getCompetitionDate(new Date(), community.competition.timezone);
+  const [todayRows, allRows] = await Promise.all([
+    db.select({ id: activities.id }).from(activities).where(and(
+      eq(activities.competitionId, community.competition.id),
+      eq(activities.activityDate, today),
+    )),
+    db.select({ id: activities.id }).from(activities).where(eq(activities.competitionId, community.competition.id)),
+  ]);
+  return {
+    totalRegistrations: community.registeredParticipants,
+    activeParticipants: community.activeParticipants,
+    checkinsToday: todayRows.length,
+    totalActivities: allRows.length,
+  };
 }

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { activities, auditLogs } from "@/db/schema";
+import { activities, activityTypes } from "@/db/schema";
 import { requireSession, jsonError, ApiError } from "@/lib/api";
 import { activeCompetition, registeredUser } from "@/lib/data";
 import { activitySchema } from "@/lib/validation";
+import { createParticipantActivity } from "@/lib/activity-service";
 
 export async function GET() {
   try {
@@ -14,8 +15,8 @@ export async function GET() {
       activeCompetition(),
     ]);
 
-    return NextResponse.json({
-      activities: await db
+    const [items, types] = await Promise.all([
+      db
         .select()
         .from(activities)
         .where(
@@ -24,8 +25,11 @@ export async function GET() {
             eq(activities.competitionId, competition.id),
           ),
         )
-        .orderBy(desc(activities.activityDate)),
-    });
+        .orderBy(desc(activities.activityDate), desc(activities.createdAt)),
+      db.select({ name: activityTypes.name }).from(activityTypes)
+        .where(eq(activityTypes.isActive, true)).orderBy(activityTypes.sortOrder),
+    ]);
+    return NextResponse.json({ activities: items, activityTypes: types.map((item) => item.name) });
   } catch (error) {
     return jsonError(error, "activities.get");
   }
@@ -40,13 +44,10 @@ export async function POST(request: Request) {
       throw new ApiError(400, "Некорректная активность", "VALIDATION_ERROR");
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const date = parsed.data.activityDate ?? today;
-
-    if (date !== today) {
+    if (parsed.data.activityDate) {
       throw new ApiError(
         400,
-        "Активность можно добавить только за текущий день",
+        "Дату активности определяет сервер по московскому времени",
         "ACTIVITY_DATE_NOT_TODAY",
       );
     }
@@ -56,25 +57,8 @@ export async function POST(request: Request) {
       activeCompetition(),
     ]);
 
-    const [activity] = await db
-      .insert(activities)
-      .values({
-        userId: user.id,
-        competitionId: competition.id,
-        activityDate: today,
-        activityType: parsed.data.activityType,
-        description: parsed.data.description || null,
-      })
-      .returning();
-
-    await db.insert(auditLogs).values({
-      actorTelegramId: session.id,
-      action: "activity.created",
-      entityType: "activity",
-      entityId: String(activity.id),
-    });
-
-    return NextResponse.json({ activity }, { status: 201 });
+    const result = await createParticipantActivity(user, competition, parsed.data, session.id);
+    return NextResponse.json(result, { status: 201 });
   } catch (error) {
     return jsonError(error, "activities.post");
   }

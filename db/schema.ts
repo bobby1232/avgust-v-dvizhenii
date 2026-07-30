@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, bigserial, boolean, customType, date, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, customType, date, index, integer, jsonb, pgEnum, pgTable, text, time, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 const bigintString = customType<{ data: string; driverData: string }>({
   dataType() {
@@ -14,7 +14,10 @@ export const competitions = pgTable("competitions", {
   name: varchar("name", { length: 160 }).notNull(),
   startDate: date("start_date", { mode: "string" }).notNull(),
   endDate: date("end_date", { mode: "string" }),
+  timezone: varchar("timezone", { length: 64 }).notNull().default("Europe/Moscow"),
   isActive: boolean("is_active").notNull().default(true),
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  botStartedAt: timestamp("bot_started_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("competitions_one_active_idx").on(table.isActive).where(sql`${table.isActive} = true`)]);
@@ -38,8 +41,17 @@ export const activities = pgTable("activities", {
   competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
   userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id, { onDelete: "cascade" }),
   activityDate: date("activity_date", { mode: "string" }).notNull(),
-  activityType: varchar("activity_type", { length: 32 }).notNull(),
+  activityType: varchar("activity_type", { length: 120 }).notNull(),
+  customActivityName: varchar("custom_activity_name", { length: 120 }),
+  durationMinutes: integer("duration_minutes").notNull().default(20),
   description: varchar("description", { length: 300 }),
+  evidenceType: varchar("evidence_type", { length: 32 }),
+  evidenceUrl: varchar("evidence_url", { length: 1000 }),
+  telegramFileId: varchar("telegram_file_id", { length: 512 }),
+  status: varchar("status", { length: 16 }).notNull().default("approved"),
+  moderationComment: varchar("moderation_comment", { length: 500 }),
+  createdBy: bigint("created_by", { mode: "number" }).references(() => users.id),
+  updatedBy: bigint("updated_by", { mode: "number" }).references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -56,5 +68,152 @@ export const auditLogs = pgTable("audit_logs", {
   entityType: varchar("entity_type", { length: 80 }),
   entityId: text("entity_id"),
   payload: jsonb("payload").$type<Record<string, unknown>>(),
+  oldValue: jsonb("old_value").$type<Record<string, unknown>>(),
+  newValue: jsonb("new_value").$type<Record<string, unknown>>(),
+  comment: varchar("comment", { length: 500 }),
+  result: varchar("result", { length: 32 }).notNull().default("success"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const activityTypes = pgTable("activity_types", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 120 }).notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const activityDays = pgTable("activity_days", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  activityDate: date("activity_date", { mode: "string" }).notNull(),
+  firstActivityId: bigint("first_activity_id", { mode: "number" }).references(() => activities.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("activity_days_competition_user_date_idx").on(table.competitionId, table.userId, table.activityDate),
+  index("activity_days_user_idx").on(table.userId),
+]);
+
+export const achievementDefinitions = pgTable("achievement_definitions", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  code: varchar("code", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 160 }).notNull(),
+  description: varchar("description", { length: 500 }).notNull(),
+  emoji: varchar("emoji", { length: 24 }).notNull(),
+  category: varchar("category", { length: 64 }).notNull().default("streak"),
+  triggerType: varchar("trigger_type", { length: 64 }).notNull(),
+  triggerValue: integer("trigger_value"),
+  isAutomatic: boolean("is_automatic").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userAchievements = pgTable("user_achievements", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  achievementId: bigint("achievement_id", { mode: "number" }).notNull().references(() => achievementDefinitions.id),
+  awardedAt: timestamp("awarded_at", { withTimezone: true }).notNull().defaultNow(),
+  awardedBy: bigint("awarded_by", { mode: "number" }).references(() => users.id),
+  source: varchar("source", { length: 32 }).notNull().default("automatic"),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: bigint("revoked_by", { mode: "number" }).references(() => users.id),
+  comment: varchar("comment", { length: 500 }),
+}, (table) => [
+  uniqueIndex("user_achievements_unique_idx").on(table.competitionId, table.userId, table.achievementId),
+  index("user_achievements_user_idx").on(table.userId),
+]);
+
+export const notificationLogs = pgTable("notification_logs", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  notificationType: varchar("notification_type", { length: 64 }).notNull(),
+  notificationDate: date("notification_date", { mode: "string" }).notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  telegramMessageId: bigintString("telegram_message_id"),
+  errorMessage: varchar("error_message", { length: 500 }),
+}, (table) => [
+  uniqueIndex("notification_logs_unique_idx").on(table.competitionId, table.userId, table.notificationType, table.notificationDate),
+]);
+
+export const contestSettings = pgTable("contest_settings", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }).unique(),
+  minimumDurationMinutes: integer("minimum_duration_minutes").notNull().default(20),
+  reminderTime: time("reminder_time").notNull().default("20:00:00"),
+  reportChatId: bigintString("report_chat_id"),
+  remindersEnabled: boolean("reminders_enabled").notNull().default(true),
+  weeklyReportEnabled: boolean("weekly_report_enabled").notNull().default(true),
+  totalGoal: integer("total_goal"),
+  nextGroupWorkout: text("next_group_workout"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const weeklyThemes = pgTable("weekly_themes", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  startDate: date("start_date", { mode: "string" }).notNull(),
+  endDate: date("end_date", { mode: "string" }).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const groupWorkouts = pgTable("group_workouts", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 160 }).notNull(),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  description: varchar("description", { length: 500 }),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const weeklyReports = pgTable("weekly_reports", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  reportDate: date("report_date", { mode: "string" }).notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  telegramMessageId: bigintString("telegram_message_id"),
+  errorMessage: varchar("error_message", { length: 500 }),
+}, (table) => [uniqueIndex("weekly_reports_unique_idx").on(table.competitionId, table.reportDate)]);
+
+export const botUpdates = pgTable("bot_updates", {
+  updateId: bigintString("update_id").primaryKey(),
+  processedAt: timestamp("processed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const draws = pgTable("draws", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  runId: varchar("run_id", { length: 64 }).notNull().unique(),
+  winnersCount: integer("winners_count").notNull(),
+  excludePreviousWinners: boolean("exclude_previous_winners").notNull().default(false),
+  comment: varchar("comment", { length: 500 }),
+  createdBy: bigint("created_by", { mode: "number" }).references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const drawParticipants = pgTable("draw_participants", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  drawId: bigint("draw_id", { mode: "number" }).notNull().references(() => draws.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id),
+  activeDays: integer("active_days").notNull(),
+}, (table) => [uniqueIndex("draw_participants_unique_idx").on(table.drawId, table.userId)]);
+
+export const drawWinners = pgTable("draw_winners", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  drawId: bigint("draw_id", { mode: "number" }).notNull().references(() => draws.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id),
+  position: integer("position").notNull(),
+}, (table) => [
+  uniqueIndex("draw_winners_user_idx").on(table.drawId, table.userId),
+  uniqueIndex("draw_winners_position_idx").on(table.drawId, table.position),
+]);
