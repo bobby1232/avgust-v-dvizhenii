@@ -33,7 +33,7 @@ button:disabled { cursor: not-allowed; opacity: .62; }
   .registration-backdrop { padding: 16px; }
   .registration-backdrop .modal { border-radius: 25px; }
   .progress-hero { grid-template-columns: 110px 1fr; }
-  .ring { width: 105px; }
+  .ring { width: 105px; height: 105px; }
 
   /* iOS zooms the whole WebView when a focused input is rendered below 16px. */
   input,
