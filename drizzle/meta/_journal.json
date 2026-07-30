@@ -8,6 +8,13 @@
       "when": 1785337200000,
       "tag": "0000_postgresql",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785412800000,
+      "tag": "0001_multiple_daily_activities",
+      "breakpoints": true
     }
   ]
 }

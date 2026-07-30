@@ -23,7 +23,8 @@ export function streaks(dates: string[], today = new Date().toISOString().slice(
 }
 export async function userStats(userId: number, competitionId: number) {
   const rows = await db.select({ date: activities.activityDate }).from(activities).where(and(eq(activities.userId, userId), eq(activities.competitionId, competitionId))).orderBy(asc(activities.activityDate));
-  return { activeDays: rows.length, ...streaks(rows.map((row) => row.date)), checkedInToday: rows.some((row) => row.date === new Date().toISOString().slice(0, 10)) };
+  const dates = [...new Set(rows.map((row) => row.date))];
+  return { activeDays: dates.length, ...streaks(dates), checkedInToday: dates.includes(new Date().toISOString().slice(0, 10)) };
 }
 export async function communityData() {
   const competition = await activeCompetition();
@@ -31,11 +32,17 @@ export async function communityData() {
     .from(users).leftJoin(activities, and(eq(activities.userId, users.id), eq(activities.competitionId, competition.id))).orderBy(desc(users.registeredAt), asc(activities.activityDate));
   const map = new Map<number, { id: number; displayName: string; department: string | null; registeredAt: Date; isActive: boolean; dates: string[] }>();
   for (const row of rows) { const item = map.get(row.id) ?? { id: row.id, displayName: row.displayName, department: row.department, registeredAt: row.registeredAt, isActive: row.isActive, dates: [] }; if (row.date) item.dates.push(row.date); map.set(row.id, item); }
-  const participants = [...map.values()].map(({ dates, ...user }) => ({ ...user, activeDays: dates.length, ...streaks(dates) }));
+  const participants = [...map.values()].map(({ dates, ...user }) => {
+    const uniqueDates = [...new Set(dates)];
+    return { ...user, activeDays: uniqueDates.length, ...streaks(uniqueDates) };
+  });
   return { competition, registeredParticipants: participants.length, activeParticipants: participants.filter((p) => p.activeDays > 0).length, totalActiveDays: participants.reduce((sum, p) => sum + p.activeDays, 0), participants };
 }
 export async function adminStats() {
   const community = await communityData(); const today = new Date().toISOString().slice(0, 10);
-  const [{ value: checkinsToday }] = await db.select({ value: count() }).from(activities).where(and(eq(activities.competitionId, community.competition.id), eq(activities.activityDate, today)));
-  return { totalRegistrations: community.registeredParticipants, activeParticipants: community.activeParticipants, checkinsToday, totalActivities: community.totalActiveDays };
+  const [[{ value: checkinsToday }], [{ value: totalActivities }]] = await Promise.all([
+    db.select({ value: count() }).from(activities).where(and(eq(activities.competitionId, community.competition.id), eq(activities.activityDate, today))),
+    db.select({ value: count() }).from(activities).where(eq(activities.competitionId, community.competition.id)),
+  ]);
+  return { totalRegistrations: community.registeredParticipants, activeParticipants: community.activeParticipants, checkinsToday, totalActivities };
 }

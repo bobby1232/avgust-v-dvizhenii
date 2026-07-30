@@ -46,7 +46,7 @@ export const activities = pgTable("activities", {
   index("activities_user_id_idx").on(table.userId),
   index("activities_competition_id_idx").on(table.competitionId),
   index("activities_date_idx").on(table.activityDate),
-  uniqueIndex("activities_user_day_idx").on(table.competitionId, table.userId, table.activityDate),
+  index("activities_user_day_idx").on(table.competitionId, table.userId, table.activityDate),
 ]);
 
 export const auditLogs = pgTable("audit_logs", {
