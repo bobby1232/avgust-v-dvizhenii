@@ -1,77 +1,150 @@
-# Август в движении
+# GOSUP GAMES | 31 день в игре
 
-Telegram Mini App для общего конкурса активности. React-интерфейс обращается только к серверным API; PostgreSQL в Railway является единственным источником профилей, отметок и статистики. Drizzle описывает схему и применяет версионированные миграции, а `pg.Pool` переиспользуется между запросами.
+Telegram Mini App и бот для игры ежедневной физической активности с 1 по 31 августа 2026 года. Игровая дата определяется сервером в `Europe/Moscow`. Несколько тренировок сохраняются отдельно, но один календарный день даёт максимум один активный день и один шаг серии.
 
-## Архитектура и данные
+Слоган: **Не важно, что ты делаешь. Важно — не останавливаться.**
 
-- `app/api` — Telegram-аутентификация, профиль, регистрация, активности, сообщество, администрирование и healthcheck.
-- `db/schema.ts` — PostgreSQL-схема Drizzle; `db/client.ts` — ограниченный пул соединений.
-- `lib/telegram.ts` проверяет HMAC-подпись и срок жизни Telegram WebApp `initData` до выдачи сессии.
-- Сессия подписана HMAC-SHA256 и находится в `httpOnly`, `sameSite=lax`, production-`secure` cookie. `initData` и Telegram ID не сохраняются браузером.
-- Администратор определяется при каждом запросе по серверному `ADMIN_TELEGRAM_IDS`; значения `role`, `isAdmin` и Telegram ID от клиента не принимаются.
+## Стек и архитектура
 
-Таблицы: `competitions` (один активный конкурс обеспечен partial unique index), `users` (уникальный `telegram_id` типа `bigint`), `activities` (внешние ключи и несколько активностей пользователя за день), `audit_logs` (JSONB-журнал операций). Несколько активностей сохраняются в истории отдельно, но в прогрессе дата учитывается как один активный день.
+- Next.js 16, React 19, TypeScript, Node.js 22.
+- PostgreSQL и Drizzle ORM с версионированными SQL-миграциями.
+- Telegram Mini App HMAC-аутентификация и подписанная `httpOnly`-сессия.
+- Telegram Bot API для команд, напоминаний, отчётов и рассылок.
+- Railway Docker deployment; миграции запускаются в `preDeployCommand`.
+
+Основные каталоги: `app/api` — HTTP API, `lib` — бизнес-сервисы, `db/schema.ts` — Drizzle schema, `drizzle` — миграции, `tests` — unit/static/integration tests.
 
 ## Переменные окружения
 
-Скопируйте `.env.example` в `.env.local`:
+Скопируйте `.env.example` в `.env.local`. Реальные секреты не коммитьте.
 
 | Переменная | Назначение |
 |---|---|
-| `DATABASE_URL` | Единственная строка подключения PostgreSQL |
-| `TELEGRAM_BOT_TOKEN` | Токен бота для проверки `initData` |
-| `ADMIN_TELEGRAM_IDS` | Telegram ID администраторов через запятую |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `TELEGRAM_BOT_TOKEN` | Токен Telegram-бота |
+| `TELEGRAM_WEBHOOK_SECRET` | Секрет заголовка Telegram webhook |
+| `ADMIN_TELEGRAM_IDS` | Числовые Telegram ID администраторов через запятую |
 | `SESSION_SECRET` | Случайная строка не короче 32 символов |
-| `DEV_TELEGRAM_USER_ID` | Необязательный локальный ID; игнорируется в production |
-| `DATABASE_POOL_SIZE` | Необязательный размер пула, по умолчанию 10 |
+| `APP_URL` | Публичный HTTPS URL Mini App |
+| `CRON_SECRET` | Bearer-секрет cron endpoints |
+| `TELEGRAM_REPORT_CHAT_ID` | Fallback chat ID недельного отчёта |
+| `DEV_TELEGRAM_USER_ID` | Локальный пользователь; игнорируется в production |
+| `DATABASE_POOL_SIZE` | Размер пула PostgreSQL, по умолчанию 10 |
+| `ALLOW_DESTRUCTIVE_RESET` | Только локальная защита legacy reset; держите `false` |
+| `MIGRATION_TEST_DATABASE_URL` | Необязательная disposable PostgreSQL-БД для integration test |
+| `SKIP_COMPETITION_START_DATE_CHECK` | Тестовый режим: `true` разрешает работу до даты начала конкурса; дата окончания продолжает проверяться |
 
-Не коммитьте `.env*` с секретами. Создайте `SESSION_SECRET`, например, командой `openssl rand -base64 48`.
+Создание секретов:
+
+```bash
+openssl rand -base64 48
+```
+
+`SKIP_COMPETITION_START_DATE_CHECK=true` используйте только на тестовом окружении. В production не задавайте переменную или установите `false`.
 
 ## Локальный запуск
 
 ```bash
-# тестовая локальная БД (не production)
-docker run --rm --name avgust-postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=avgust -p 5432:5432 postgres:16
+docker run --rm --name gosup-postgres \
+  -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=gosup \
+  -p 5432:5432 postgres:16
 cp .env.example .env.local
 npm ci
 npm run db:migrate
 npm run dev
 ```
 
-Заполните `SESSION_SECRET`, `TELEGRAM_BOT_TOKEN`; либо задайте `DEV_TELEGRAM_USER_ID` для разработки вне Telegram. Development fallback отключён при `NODE_ENV=production`.
+Проверки:
 
-Команды: `npm run db:generate` создаёт миграцию после изменения схемы, `npm run db:migrate` применяет её, `npm run lint`, `npm test`, `npm run build` проверяют проект. Миграции не запускаются во время Docker build.
+```bash
+npm run lint
+npm test
+npm run build
+curl http://localhost:3000/api/health
+```
 
-## API
+`GET /api/health` возвращает `{"status":"ok"}` при доступной БД.
 
-- `POST /api/auth/telegram`, `GET /api/me`, `POST /api/register`
-- `GET|POST /api/activities`, `GET /api/community`
-- `GET /api/admin/stats`, `GET /api/admin/users`, `POST /api/admin/reset-contest`
-- `GET /api/health` выполняет `SELECT 1`, возвращая 200 или безопасный 503.
+## Миграции
 
-Регистрация идемпотентна. Допустимые активности: бег, прогулка, йога и велосипед. Агрегаты сообщества получаются одним join без N+1.
+```bash
+npm run db:migrate
+```
 
-### Глобальный сброс
+Не изменяйте применённые `0000`–`0002`. Миграция `0003_phase0_schema_repair.sql` идемпотентно переносит пользовательские поля в Drizzle schema, добавляет retry metadata и таблицы рассылок. Она использует `IF EXISTS`/`IF NOT EXISTS` и не удаляет пользователей или активности.
 
-Только серверный администратор может отправить точную фразу `НАЧАТЬ ЗАНОВО`. В одной транзакции с PostgreSQL advisory lock удаляются активности и пользователи, закрывается старый конкурс, создаётся новый активный конкурс и пишется аудит. При ошибке всё откатывается. После сброса даже администратор регистрируется заново; его роль снова выводится из окружения.
+Integration test запускается только на отдельной пустой БД:
 
-## Развертывание с PostgreSQL на Railway
+```bash
+MIGRATION_TEST_DATABASE_URL=postgresql://... npm test
+```
 
-1. Откройте текущий Railway project и добавьте PostgreSQL service.
-2. Передайте reference-переменную `DATABASE_URL` PostgreSQL service в application service.
-3. Добавьте в application service `TELEGRAM_BOT_TOKEN`, `ADMIN_TELEGRAM_IDS`, случайный `SESSION_SECRET`.
-4. Запустите новый deployment.
-5. Убедитесь, что pre-deploy `npm run db:migrate` успешно завершился.
-6. Проверьте `https://<домен>/api/health` — ожидается `{"status":"ok"}`.
-7. Откройте Mini App в Telegram, зарегистрируйтесь и создайте активность.
-8. Под администратором проверьте статистику и глобальный сброс с подтверждением.
+Никогда не указывайте production-БД в `MIGRATION_TEST_DATABASE_URL`.
 
-`railway.json` сохраняет Dockerfile builder, restart policy и использует `/api/health`. PostgreSQL credentials в репозитории не нужны.
+## Telegram webhook
 
-## Типовые ошибки
+Регистрация:
 
-- 503 healthcheck: проверьте reference `DATABASE_URL`, доступность PostgreSQL и TLS.
-- «Сервис временно недоступен»: проверьте, что pre-deploy миграция выполнена.
-- Ошибка Telegram: проверьте токен бота, запуск именно из Mini App и актуальность `initData` (не старше суток).
-- Нет раздела «Админ»: добавьте числовой ID без `@` в `ADMIN_TELEGRAM_IDS` и повторно войдите.
-- В один день можно добавить несколько активностей; для серии и прогресса этот день всё равно учитывается один раз.
+```bash
+curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  -d "url=${APP_URL}/api/bot/webhook" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
+  -d 'allowed_updates=["message"]'
+```
+
+Проверка:
+
+```bash
+curl -sS "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Webhook принимает секрет только в `X-Telegram-Bot-Api-Secret-Token`. Команды: `/start`, `/rules`, `/app`, `/progress`, `/today`, `/achievements`, `/notifications`.
+
+## Cron и Railway
+
+Локальный вызов:
+
+```bash
+curl -X POST http://localhost:3000/api/cron/reminders \
+  -H "Authorization: Bearer ${CRON_SECRET}"
+curl -X POST http://localhost:3000/api/cron/weekly-report \
+  -H "Authorization: Bearer ${CRON_SECRET}"
+```
+
+В Railway создайте два cron service/job:
+
+- reminders: каждые 10–15 минут, `POST /api/cron/reminders`;
+- weekly report: раз в неделю, `POST /api/cron/weekly-report`.
+
+Оба запроса передают `Authorization: Bearer <CRON_SECRET>`. Reminder service сам сравнивает московское время с `contest_settings.reminder_time`. Failed reminders и отчёты повторяются; sent-записи идемпотентны.
+
+Для application service задайте все обязательные переменные, подключите PostgreSQL reference `DATABASE_URL` и проверьте:
+
+1. `preDeployCommand` завершил `npm run db:migrate`;
+2. `/api/health` отвечает 200;
+3. webhook указывает на актуальный `APP_URL`;
+4. Mini App открывается из кнопки бота;
+5. cron получает 2xx.
+
+## Администрирование
+
+Администратор определяется только по `ADMIN_TELEGRAM_IDS`. API поддерживает:
+
+- участников, отключение и настройки уведомлений;
+- создание, редактирование, модерацию и удаление активностей с пересчётом;
+- ручную выдачу и отзыв достижений с обязательным комментарием;
+- настройки конкурса, напоминаний и отчётов;
+- CSV `Participants`, `Activities`, `Achievements`, `Audit`;
+- preview и массовую рассылку;
+- неизменяемый snapshot и криптографический розыгрыш по `runId`;
+- итоговый отчёт.
+
+Глобальное удаление пользователей удалено. Новый конкурс создаётся архивированием текущего конкурса и атомарным созданием настроек, тем и аудита.
+
+## Безопасность
+
+- Клиент не передаёт дату пользовательской активности.
+- В прогресс входят только `approved`-активности.
+- CSV значения с `=`, `+`, `-`, `@` экранируются от formula injection.
+- `DEV_TELEGRAM_USER_ID` не работает при `NODE_ENV=production`.
+- Не запускайте destructive SQL и migration integration tests на production.

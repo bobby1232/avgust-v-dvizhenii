@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  competitionPhase,
   getCompetitionDate,
   getElapsedCompetitionDates,
   isCompetitionDay,
@@ -24,6 +25,21 @@ test("competition boundaries are inclusive", () => {
   assert.equal(isCompetitionDay("2026-08-01", competition), true);
   assert.equal(isCompetitionDay("2026-08-31", competition), true);
   assert.equal(isCompetitionDay("2026-09-01", competition), false);
+});
+
+test("test mode skips only the competition start date check", () => {
+  const previous = process.env.SKIP_COMPETITION_START_DATE_CHECK;
+  process.env.SKIP_COMPETITION_START_DATE_CHECK = "true";
+  try {
+    const beforeStart = new Date("2026-07-30T12:00:00Z");
+    assert.equal(competitionPhase(competition, beforeStart), "active");
+    assert.equal(isCompetitionDay("2026-07-30", competition), true);
+    assert.deepEqual(getElapsedCompetitionDates(competition, beforeStart), ["2026-07-30"]);
+    assert.equal(isCompetitionDay("2026-09-01", competition), false);
+  } finally {
+    if (previous === undefined) delete process.env.SKIP_COMPETITION_START_DATE_CHECK;
+    else process.env.SKIP_COMPETITION_START_DATE_CHECK = previous;
+  }
 });
 
 test("elapsed dates stop at competition end", () => {

@@ -16,8 +16,6 @@ export const competitions = pgTable("competitions", {
   endDate: date("end_date", { mode: "string" }),
   timezone: varchar("timezone", { length: 64 }).notNull().default("Europe/Moscow"),
   isActive: boolean("is_active").notNull().default(true),
-  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
-  botStartedAt: timestamp("bot_started_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("competitions_one_active_idx").on(table.isActive).where(sql`${table.isActive} = true`)]);
@@ -32,6 +30,8 @@ export const users = pgTable("users", {
   department: varchar("department", { length: 120 }),
   role: userRole("role").notNull().default("participant"),
   isActive: boolean("is_active").notNull().default(true),
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  botStartedAt: timestamp("bot_started_at", { withTimezone: true }),
   registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("users_registered_at_idx").on(table.registeredAt)]);
@@ -123,6 +123,7 @@ export const userAchievements = pgTable("user_achievements", {
   source: varchar("source", { length: 32 }).notNull().default("automatic"),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
   revokedBy: bigint("revoked_by", { mode: "number" }).references(() => users.id),
+  revocationSource: varchar("revocation_source", { length: 32 }),
   comment: varchar("comment", { length: 500 }),
 }, (table) => [
   uniqueIndex("user_achievements_unique_idx").on(table.competitionId, table.userId, table.achievementId),
@@ -139,6 +140,8 @@ export const notificationLogs = pgTable("notification_logs", {
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   telegramMessageId: bigintString("telegram_message_id"),
   errorMessage: varchar("error_message", { length: 500 }),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("notification_logs_unique_idx").on(table.competitionId, table.userId, table.notificationType, table.notificationDate),
 ]);
@@ -179,10 +182,14 @@ export const weeklyReports = pgTable("weekly_reports", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
   reportDate: date("report_date", { mode: "string" }).notNull(),
+  periodStart: date("period_start", { mode: "string" }),
+  periodEnd: date("period_end", { mode: "string" }),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   status: varchar("status", { length: 32 }).notNull().default("pending"),
   telegramMessageId: bigintString("telegram_message_id"),
   errorMessage: varchar("error_message", { length: 500 }),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
 }, (table) => [uniqueIndex("weekly_reports_unique_idx").on(table.competitionId, table.reportDate)]);
 
 export const botUpdates = pgTable("bot_updates", {
@@ -217,3 +224,23 @@ export const drawWinners = pgTable("draw_winners", {
   uniqueIndex("draw_winners_user_idx").on(table.drawId, table.userId),
   uniqueIndex("draw_winners_position_idx").on(table.drawId, table.position),
 ]);
+
+export const broadcastRuns = pgTable("broadcast_runs", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  audience: varchar("audience", { length: 64 }).notNull(),
+  minimumActiveDays: integer("minimum_active_days"),
+  message: text("message").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  createdBy: bigint("created_by", { mode: "number" }).notNull().references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const broadcastResults = pgTable("broadcast_results", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  broadcastId: bigint("broadcast_id", { mode: "number" }).notNull().references(() => broadcastRuns.id, { onDelete: "cascade" }),
+  userId: bigint("user_id", { mode: "number" }).notNull().references(() => users.id),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  telegramMessageId: bigintString("telegram_message_id"),
+  errorMessage: varchar("error_message", { length: 500 }),
+}, (table) => [uniqueIndex("broadcast_results_unique_idx").on(table.broadcastId, table.userId)]);

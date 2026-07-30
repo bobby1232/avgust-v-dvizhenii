@@ -2,6 +2,7 @@ import {
   DEFAULT_COMPETITION_TIMEZONE,
   getCompetitionDate,
   getElapsedCompetitionDates,
+  isCompetitionDay,
   shiftCompetitionDate,
   type CompetitionPeriod,
 } from "./competition-time.ts";
@@ -22,7 +23,7 @@ export function calculateProgress(
   now = new Date(),
 ): Progress {
   const dates = [...new Set(activityDates)]
-    .filter((date) => date >= competition.startDate && (!competition.endDate || date <= competition.endDate))
+    .filter((date) => isCompetitionDay(date, competition))
     .sort();
   const dateSet = new Set(dates);
   let maxStreak = 0;

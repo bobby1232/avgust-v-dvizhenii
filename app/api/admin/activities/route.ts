@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { activities, auditLogs, users } from "@/db/schema";
-import { ApiError, jsonError, requireAdmin } from "@/lib/api";
+import { ApiError, jsonError, requireAdmin, zodDetails } from "@/lib/api";
 import { activeCompetition, registeredUser } from "@/lib/data";
 import { isCompetitionDay } from "@/lib/competition-time";
-import { rebuildActivityDayAndAchievements } from "@/lib/activity-service";
+import { assertActiveActivityType, rebuildActivityDayAndAchievements } from "@/lib/activity-service";
 import { adminActivityPatchSchema, adminActivitySchema } from "@/lib/validation";
 
 export async function GET() {
@@ -28,12 +28,13 @@ export async function POST(request: Request) {
   try {
     const actor = await requireAdmin();
     const parsed = adminActivitySchema.safeParse(await request.json());
-    if (!parsed.success) throw new ApiError(400, "Проверьте данные активности", "VALIDATION_ERROR");
+    if (!parsed.success) throw new ApiError(400, "Проверьте данные активности", "VALIDATION_ERROR", zodDetails(parsed.error));
     const competition = await activeCompetition();
     if (!isCompetitionDay(parsed.data.activityDate, competition)) {
       throw new ApiError(400, "Дата находится за пределами конкурса", "OUTSIDE_COMPETITION");
     }
     const actorUser = await registeredUser(actor.id);
+    await assertActiveActivityType(parsed.data.activityType);
     const [target] = await db.select().from(users).where(eq(users.id, parsed.data.userId)).limit(1);
     if (!target) throw new ApiError(404, "Участник не найден", "USER_NOT_FOUND");
     const [activity] = await db.insert(activities).values({
@@ -68,7 +69,7 @@ export async function PATCH(request: Request) {
   try {
     const actor = await requireAdmin();
     const parsed = adminActivityPatchSchema.safeParse(await request.json());
-    if (!parsed.success) throw new ApiError(400, "Проверьте данные активности", "VALIDATION_ERROR");
+    if (!parsed.success) throw new ApiError(400, "Проверьте данные активности", "VALIDATION_ERROR", zodDetails(parsed.error));
     const competition = await activeCompetition();
     const actorUser = await registeredUser(actor.id);
     const [previous] = await db.select().from(activities).where(and(
@@ -79,11 +80,12 @@ export async function PATCH(request: Request) {
     if (parsed.data.activityDate && !isCompetitionDay(parsed.data.activityDate, competition)) {
       throw new ApiError(400, "Дата находится за пределами конкурса", "OUTSIDE_COMPETITION");
     }
+    if (parsed.data.activityType) await assertActiveActivityType(parsed.data.activityType);
     const { id, comment, ...changes } = parsed.data;
     const values = {
       ...changes,
-      customActivityName: changes.customActivityName || undefined,
-      description: changes.description || undefined,
+      customActivityName: changes.customActivityName === undefined ? undefined : changes.customActivityName || null,
+      description: changes.description === undefined ? undefined : changes.description || null,
       updatedBy: actorUser.id,
       updatedAt: new Date(),
     };
