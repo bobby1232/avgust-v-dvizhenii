@@ -9,7 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "test": "node --test tests/security.test.mjs tests/progress-ring.test.mjs tests/mobile-startup.test.mjs && npm run build",
+    "test": "node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
