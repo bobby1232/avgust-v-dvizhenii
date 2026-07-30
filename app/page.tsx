@@ -39,6 +39,12 @@ type AchievementAdmin = {
   awards: Array<{ id: number; userId: number; participant: string; achievementId: number; revokedAt: string | null }>;
 };
 
+const fallbackActivityTypes = [
+  "Бег", "Ходьба", "SUP", "Велосипед", "Плавание", "Тренировка в зале",
+  "Турник / воркаут", "Йога", "Растяжка", "Футбол", "Командная игра",
+  "Семейная тренировка", "Тренировка с другом", "Другое",
+];
+
 const emptyCommunity: Community = {
   registeredParticipants: 0,
   activeParticipants: 0,
@@ -66,7 +72,8 @@ function telegramInitData(): string {
   const telegram = (window as typeof window & { Telegram?: { WebApp?: { initData?: string } } }).Telegram?.WebApp;
   if (telegram?.initData) return telegram.initData;
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-  return hash.get("tgWebAppData") ?? "";
+  const query = new URLSearchParams(window.location.search.replace(/^\?/, ""));
+  return hash.get("tgWebAppData") || query.get("tgWebAppData") || "";
 }
 
 function formatDate(value: string | Date): string {
@@ -77,13 +84,17 @@ function statusLabel(status: ActivityDto["status"]) {
   return status === "approved" ? "Засчитана" : status === "pending" ? "На проверке" : "Отклонена";
 }
 
+function logBackgroundFailure(name: string, reason: unknown): void {
+  console.error(`[startup:${name}]`, reason instanceof Error ? reason.message : reason);
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>("today");
   const [adminTab, setAdminTab] = useState<AdminTab>("participants");
   const [me, setMe] = useState<Me | null>(null);
   const [progress, setProgress] = useState<ProgressDto | null>(null);
   const [activities, setActivities] = useState<ActivityDto[]>([]);
-  const [activityTypes, setActivityTypes] = useState<string[]>([]);
+  const [activityTypes, setActivityTypes] = useState<string[]>(fallbackActivityTypes);
   const [community, setCommunity] = useState<Community>(emptyCommunity);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
   const [adminActivities, setAdminActivities] = useState<AdminActivityDto[]>([]);
@@ -97,7 +108,7 @@ export default function Home() {
   const [showCheckin, setShowCheckin] = useState(false);
   const [name, setName] = useState("");
   const [department, setDepartment] = useState("");
-  const [activityType, setActivityType] = useState("");
+  const [activityType, setActivityType] = useState(fallbackActivityTypes[0]);
   const [customActivityName, setCustomActivityName] = useState("");
   const [durationMinutes, setDurationMinutes] = useState(20);
   const [description, setDescription] = useState("");
@@ -120,28 +131,46 @@ export default function Home() {
   }, []);
 
   const loadRegisteredData = useCallback(async (role: Me["role"]) => {
-    const [activityResponse, group, stats] = await Promise.all([
+    const [activityResult, communityResult, progressResult] = await Promise.allSettled([
       api<ActivityResponse>("/api/activities"),
       api<Community>("/api/community"),
       api<ProgressDto>("/api/progress"),
     ]);
-    setActivities(activityResponse.activities);
-    setActivityTypes(activityResponse.activityTypes);
-    setActivityType((current) => current || activityResponse.activityTypes[0] || "");
-    setCommunity(group);
-    setProgress(stats);
-    if (role === "admin") {
-      const [summary, userRows, activityRows, achievements] = await Promise.all([
-        api<AdminStats>("/api/admin/stats"),
-        api<{ users: ParticipantDto[] }>("/api/admin/users"),
-        api<{ activities: AdminActivityDto[] }>("/api/admin/activities"),
-        api<AchievementAdmin>("/api/admin/achievements"),
-      ]);
-      setAdminStats(summary);
-      setAdminParticipants(userRows.users);
-      setAdminActivities(activityRows.activities);
-      setAchievementAdmin(achievements);
+
+    if (activityResult.status === "fulfilled") {
+      setActivities(activityResult.value.activities);
+      const types = activityResult.value.activityTypes.length
+        ? activityResult.value.activityTypes
+        : fallbackActivityTypes;
+      setActivityTypes(types);
+      setActivityType((current) => current || types[0] || fallbackActivityTypes[0]);
+    } else {
+      logBackgroundFailure("activities", activityResult.reason);
     }
+
+    if (communityResult.status === "fulfilled") setCommunity(communityResult.value);
+    else logBackgroundFailure("community", communityResult.reason);
+
+    if (progressResult.status === "fulfilled") setProgress(progressResult.value);
+    else logBackgroundFailure("progress", progressResult.reason);
+
+    if (role !== "admin") return;
+
+    const [summaryResult, usersResult, activitiesResult, achievementsResult] = await Promise.allSettled([
+      api<AdminStats>("/api/admin/stats"),
+      api<{ users: ParticipantDto[] }>("/api/admin/users"),
+      api<{ activities: AdminActivityDto[] }>("/api/admin/activities"),
+      api<AchievementAdmin>("/api/admin/achievements"),
+    ]);
+
+    if (summaryResult.status === "fulfilled") setAdminStats(summaryResult.value);
+    else logBackgroundFailure("admin-stats", summaryResult.reason);
+    if (usersResult.status === "fulfilled") setAdminParticipants(usersResult.value.users);
+    else logBackgroundFailure("admin-users", usersResult.reason);
+    if (activitiesResult.status === "fulfilled") setAdminActivities(activitiesResult.value.activities);
+    else logBackgroundFailure("admin-activities", activitiesResult.reason);
+    if (achievementsResult.status === "fulfilled") setAchievementAdmin(achievementsResult.value);
+    else logBackgroundFailure("admin-achievements", achievementsResult.reason);
   }, []);
 
   const load = useCallback(async () => {
@@ -159,10 +188,15 @@ export default function Home() {
       const current = await api<Me>("/api/me");
       setMe(current);
       setName((value) => value || current.telegramUser.firstName || "");
-      if (current.registered) await loadRegisteredData(current.role);
+
+      // Only Telegram auth and /api/me are critical for first paint. The working
+      // ZIP opened at this point; expanded datasets must not block mobile startup.
+      setLoading(false);
+      if (current.registered) {
+        void loadRegisteredData(current.role).catch((caught) => logBackgroundFailure("registered-data", caught));
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Не удалось загрузить приложение");
-    } finally {
       setLoading(false);
     }
   }, [loadRegisteredData]);
