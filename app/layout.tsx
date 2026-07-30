@@ -73,7 +73,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ru">
       <head>
         <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
-        <script src="https://telegram.org/js/telegram-web-app.js?59" defer />
+        {/* The Telegram CDN must never sit in front of Next's deferred client
+            bundles: an unavailable SDK otherwise leaves mobile WebViews on a
+            permanently non-interactive loading screen. The inline bootstrap
+            above and the URL-hash fallback in the client make async safe. */}
+        <script src="https://telegram.org/js/telegram-web-app.js?59" async />
       </head>
       <body>{children}</body>
     </html>
