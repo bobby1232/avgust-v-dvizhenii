@@ -32,12 +32,15 @@ Telegram Mini App и бот для игры ежедневной физичес�
 | `DATABASE_POOL_SIZE` | Размер пула PostgreSQL, по умолчанию 10 |
 | `ALLOW_DESTRUCTIVE_RESET` | Только локальная защита legacy reset; держите `false` |
 | `MIGRATION_TEST_DATABASE_URL` | Необязательная disposable PostgreSQL-БД для integration test |
+| `SKIP_COMPETITION_START_DATE_CHECK` | Тестовый режим: `true` разрешает работу до даты начала конкурса; дата окончания продолжает проверяться |
 
 Создание секретов:
 
 ```bash
 openssl rand -base64 48
 ```
+
+`SKIP_COMPETITION_START_DATE_CHECK=true` используйте только на тестовом окружении. В production не задавайте переменную или установите `false`.
 
 ## Локальный запуск
 

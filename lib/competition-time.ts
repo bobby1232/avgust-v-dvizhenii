@@ -8,6 +8,10 @@ export type CompetitionPeriod = {
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
+export function skipsCompetitionStartDateCheck(): boolean {
+  return process.env.SKIP_COMPETITION_START_DATE_CHECK === "true";
+}
+
 function assertDate(value: string): void {
   if (!datePattern.test(value)) throw new Error(`Invalid competition date: ${value}`);
 }
@@ -53,7 +57,8 @@ export function getCompetitionDateTime(
 
 export function isCompetitionDay(date: string, competition: CompetitionPeriod): boolean {
   assertDate(date);
-  return date >= competition.startDate && (!competition.endDate || date <= competition.endDate);
+  const hasStarted = skipsCompetitionStartDateCheck() || date >= competition.startDate;
+  return hasStarted && (!competition.endDate || date <= competition.endDate);
 }
 
 export function shiftCompetitionDate(date: string, days: number): string {
@@ -69,9 +74,12 @@ export function getElapsedCompetitionDates(
 ): string[] {
   const today = getCompetitionDate(now, competition.timezone || DEFAULT_COMPETITION_TIMEZONE);
   const last = competition.endDate && competition.endDate < today ? competition.endDate : today;
-  if (last < competition.startDate) return [];
+  const first = skipsCompetitionStartDateCheck() && today < competition.startDate
+    ? today
+    : competition.startDate;
+  if (last < first) return [];
   const dates: string[] = [];
-  for (let date = competition.startDate; date <= last; date = shiftCompetitionDate(date, 1)) {
+  for (let date = first; date <= last; date = shiftCompetitionDate(date, 1)) {
     dates.push(date);
   }
   return dates;
@@ -82,7 +90,7 @@ export function competitionPhase(
   now = new Date(),
 ): "before" | "active" | "after" {
   const today = getCompetitionDate(now, competition.timezone || DEFAULT_COMPETITION_TIMEZONE);
-  if (today < competition.startDate) return "before";
+  if (!skipsCompetitionStartDateCheck() && today < competition.startDate) return "before";
   if (competition.endDate && today > competition.endDate) return "after";
   return "active";
 }
