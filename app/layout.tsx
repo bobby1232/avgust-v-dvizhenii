@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import TelegramGate from "./telegram-gate";
 import "./globals.css";
 import "./database.css";
 
@@ -74,12 +73,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="ru">
       <head>
         <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
-        {/* Keep the SDK asynchronous so an unavailable Telegram CDN cannot block
-            the document. TelegramGate waits for mobile initData before mounting
-            the application, removing the desktop-fast/mobile-slow race. */}
-        <script src="https://telegram.org/js/telegram-web-app.js?63" async />
+        {/* This is the bootstrap used by the mobile-working ZIP. Keep the SDK
+            asynchronous so Telegram CDN cannot block Next.js hydration. */}
+        <script src="https://telegram.org/js/telegram-web-app.js?59" async />
       </head>
-      <body><TelegramGate>{children}</TelegramGate></body>
+      <body>{children}</body>
     </html>
   );
 }
