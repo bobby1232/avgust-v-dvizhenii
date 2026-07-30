@@ -22,49 +22,17 @@ export const metadata: Metadata = {
 
 const telegramBootstrap = `
 (function () {
-  function postTelegramEvent(eventType, eventData) {
-    var payload = eventData || {};
-    try {
-      if (window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function') {
-        window.TelegramWebviewProxy.postEvent(eventType, JSON.stringify(payload));
-        return true;
-      }
-      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.TelegramWebviewProxy) {
-        window.webkit.messageHandlers.TelegramWebviewProxy.postMessage(JSON.stringify({
-          eventType: eventType,
-          eventData: payload
-        }));
-        return true;
-      }
-      if (window.external && typeof window.external.notify === 'function') {
-        window.external.notify(JSON.stringify({ eventType: eventType, eventData: payload }));
-        return true;
-      }
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(JSON.stringify({ eventType: eventType, eventData: payload }), '*');
-        return true;
-      }
-    } catch (_) {}
-    return false;
+  function initializeTelegram() {
+    var webApp = window.Telegram && window.Telegram.WebApp;
+    if (!webApp) return;
+    try { webApp.ready(); } catch (_) {}
+    try { webApp.expand(); } catch (_) {}
   }
 
-  // Telegram iOS keeps its native loader visible until web_app_ready is sent.
-  // Send it directly so loading the external SDK cannot block the first paint.
-  postTelegramEvent('web_app_ready', {});
-
-  var attempts = 0;
-  var timer = setInterval(function () {
-    attempts += 1;
-    var webApp = window.Telegram && window.Telegram.WebApp;
-    if (webApp) {
-      try { webApp.ready(); } catch (_) {}
-      try { webApp.expand(); } catch (_) {}
-      clearInterval(timer);
-    } else {
-      if (attempts % 20 === 0) postTelegramEvent('web_app_ready', {});
-      if (attempts >= 200) clearInterval(timer);
-    }
-  }, 50);
+  initializeTelegram();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTelegram, { once: true });
+  }
 })();
 `;
 
@@ -72,10 +40,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ru">
       <head>
+        {/* Telegram requires its SDK in the head before application scripts. Keep
+            this synchronous so mobile clients initialize WebApp and initData in
+            the documented order. */}
+        <script src="https://telegram.org/js/telegram-web-app.js?63" />
         <script dangerouslySetInnerHTML={{ __html: telegramBootstrap }} />
-        {/* This is the bootstrap used by the mobile-working ZIP. Keep the SDK
-            asynchronous so Telegram CDN cannot block Next.js hydration. */}
-        <script src="https://telegram.org/js/telegram-web-app.js?59" async />
       </head>
       <body>{children}</body>
     </html>
