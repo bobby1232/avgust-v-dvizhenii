@@ -72,7 +72,7 @@ async function telegramMultipartRequest<T>(
 export async function sendTelegramPhotoPost(chatId: string, photos: string[], caption: string): Promise<{ message_id: number }> {
   if (!photos.length) return sendTelegramMessage(chatId, caption);
   if (photos.length === 1) {
-    return telegramMultipartRequest("sendPhoto", chatId, (targetChatId) => {
+    return telegramMultipartRequest<{ message_id: number }>("sendPhoto", chatId, (targetChatId) => {
       const form = new FormData();
       form.set("chat_id", targetChatId);
       form.set("photo", dataUrlFile(photos[0], 0));
