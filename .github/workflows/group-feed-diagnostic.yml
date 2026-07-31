@@ -11,8 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Fetch safe group feed diagnostics
+      - name: Inspect DNS and endpoints
         run: |
-          set -euo pipefail
-          response="$(curl --fail --silent --show-error --retry 10 --retry-delay 5 --max-time 30 https://avgust-v-dvizhenii-production.up.railway.app/api/health)"
-          echo "$response" | python -m json.tool
+          set +e
+          echo '=== system resolver ==='
+          getent ahosts august.rilabs.tech
+          echo '=== Cloudflare DNS ==='
+          dig @1.1.1.1 august.rilabs.tech A +noall +answer +comments
+          dig @1.1.1.1 august.rilabs.tech CNAME +noall +answer +comments
+          echo '=== Google DNS ==='
+          dig @8.8.8.8 august.rilabs.tech A +noall +answer +comments
+          dig @8.8.8.8 august.rilabs.tech CNAME +noall +answer +comments
+          echo '=== parent domain nameservers ==='
+          dig rilabs.tech NS +short
+          echo '=== custom domain health ==='
+          curl -I --max-time 15 https://august.rilabs.tech/api/health
+          echo '=== Railway generated domain health ==='
+          curl -i --max-time 15 https://avgust-v-dvizhenii-production.up.railway.app/api/health
+          exit 0
