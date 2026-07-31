@@ -10,9 +10,12 @@ type ReadinessRow = {
   achievement_definitions: string | null;
   user_achievements: string | null;
   contest_settings: string | null;
+  group_feed_events: string | null;
   activities_duration_minutes: boolean;
   activities_status: boolean;
   users_notifications_enabled: boolean;
+  contest_settings_group_feed_enabled: boolean;
+  contest_settings_activity_digest_interval_minutes: boolean;
 };
 
 export async function GET() {
@@ -29,6 +32,7 @@ export async function GET() {
         to_regclass('public.achievement_definitions')::text AS achievement_definitions,
         to_regclass('public.user_achievements')::text AS user_achievements,
         to_regclass('public.contest_settings')::text AS contest_settings,
+        to_regclass('public.group_feed_events')::text AS group_feed_events,
         EXISTS (
           SELECT 1
           FROM information_schema.columns
@@ -49,7 +53,21 @@ export async function GET() {
           WHERE table_schema = 'public'
             AND table_name = 'users'
             AND column_name = 'notifications_enabled'
-        ) AS users_notifications_enabled
+        ) AS users_notifications_enabled,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'contest_settings'
+            AND column_name = 'group_feed_enabled'
+        ) AS contest_settings_group_feed_enabled,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'contest_settings'
+            AND column_name = 'activity_digest_interval_minutes'
+        ) AS contest_settings_activity_digest_interval_minutes
     `);
 
     const readiness = readinessResult.rows[0];
