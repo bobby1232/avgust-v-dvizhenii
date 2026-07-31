@@ -50,6 +50,8 @@ test("processor uses leases, skip locked, retry ceiling, escaping and message sp
   assert.match(telegram, /escapeTelegramHtml/);
   assert.match(telegram, /splitTelegramHtml/);
   assert.match(telegram, /retry_after/);
+  assert.match(telegram, /migrate_to_chat_id/);
+  assert.match(telegram, /newChatId.*chat_id/s);
 });
 
 test("group messages show a participant's Telegram username in parentheses", async () => {
