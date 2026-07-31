@@ -154,10 +154,41 @@ export const contestSettings = pgTable("contest_settings", {
   reportChatId: bigintString("report_chat_id"),
   remindersEnabled: boolean("reminders_enabled").notNull().default(true),
   weeklyReportEnabled: boolean("weekly_report_enabled").notNull().default(true),
+  groupFeedEnabled: boolean("group_feed_enabled").notNull().default(true),
+  activityDigestEnabled: boolean("activity_digest_enabled").notNull().default(true),
+  activityDigestIntervalMinutes: integer("activity_digest_interval_minutes").notNull().default(10),
+  achievementAnnouncementsEnabled: boolean("achievement_announcements_enabled").notNull().default(true),
+  leaderboardAnnouncementsEnabled: boolean("leaderboard_announcements_enabled").notNull().default(true),
+  leaderboardDayTime: time("leaderboard_day_time").notNull().default("12:00:00"),
+  leaderboardEveningTime: time("leaderboard_evening_time").notNull().default("20:30:00"),
+  dailySummaryEnabled: boolean("daily_summary_enabled").notNull().default(true),
+  dailySummaryTime: time("daily_summary_time").notNull().default("21:30:00"),
   totalGoal: integer("total_goal"),
   nextGroupWorkout: text("next_group_workout"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const groupFeedEvents = pgTable("group_feed_events", {
+  id: bigserial("id", { mode: "number" }).primaryKey(),
+  competitionId: bigint("competition_id", { mode: "number" }).notNull().references(() => competitions.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 32 }).notNull(),
+  entityType: varchar("entity_type", { length: 32 }).notNull(),
+  entityId: bigintString("entity_id").notNull(),
+  dedupeKey: varchar("dedupe_key", { length: 200 }).notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  telegramMessageId: bigintString("telegram_message_id"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  errorMessage: varchar("error_message", { length: 500 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("group_feed_events_dedupe_idx").on(table.dedupeKey),
+  index("group_feed_events_ready_idx").on(table.status, table.availableAt),
+]);
 
 export const weeklyThemes = pgTable("weekly_themes", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

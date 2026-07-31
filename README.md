@@ -27,7 +27,7 @@ Telegram Mini App и бот для игры ежедневной физичес�
 | `SESSION_SECRET` | Случайная строка не короче 32 символов |
 | `APP_URL` | Публичный HTTPS URL Mini App |
 | `CRON_SECRET` | Bearer-секрет cron endpoints |
-| `TELEGRAM_REPORT_CHAT_ID` | Fallback chat ID недельного отчёта |
+| `TELEGRAM_REPORT_CHAT_ID` | Fallback chat ID недельного отчёта и групповой ленты |
 | `DEV_TELEGRAM_USER_ID` | Локальный пользователь; игнорируется в production |
 | `DATABASE_POOL_SIZE` | Размер пула PostgreSQL, по умолчанию 10 |
 | `ALLOW_DESTRUCTIVE_RESET` | Только локальная защита legacy reset; держите `false` |
@@ -109,12 +109,16 @@ curl -X POST http://localhost:3000/api/cron/reminders \
   -H "Authorization: Bearer ${CRON_SECRET}"
 curl -X POST http://localhost:3000/api/cron/weekly-report \
   -H "Authorization: Bearer ${CRON_SECRET}"
+curl -X POST http://localhost:3000/api/cron/group-feed \
+  -H "Authorization: Bearer ${CRON_SECRET}"
 ```
 
-В Railway создайте два cron service/job:
+В Railway создайте три cron service/job:
 
 - reminders: каждые 10–15 минут, `POST /api/cron/reminders`;
 - weekly report: раз в неделю, `POST /api/cron/weekly-report`.
+- group feed: каждые 5 минут, `POST /api/cron/group-feed` (достижения уйдут на ближайшем запуске,
+  активности будут собраны в дайджест; расписание публикаций вычисляется в timezone конкурса).
 
 Оба запроса передают `Authorization: Bearer <CRON_SECRET>`. Reminder service сам сравнивает московское время с `contest_settings.reminder_time`. Failed reminders и отчёты повторяются; sent-записи идемпотентны.
 
@@ -140,6 +144,19 @@ curl -X POST http://localhost:3000/api/cron/weekly-report \
 - итоговый отчёт.
 
 Глобальное удаление пользователей удалено. Новый конкурс создаётся архивированием текущего конкурса и атомарным созданием настроек, тем и аудита.
+
+## Групповая Telegram-лента
+
+Лента публикует дайджесты подтверждённых активностей, новые автоматические и ручные бейджи,
+Top-10 дважды в день и вечернюю статистику. В `contest_settings.report_chat_id` укажите ID группы;
+если поле пусто, используется `TELEGRAM_REPORT_CHAT_ID`. ID супергруппы обычно начинается с `-100`.
+Добавьте бота в группу и разрешите ему отправлять сообщения. Отдельный group chat env не нужен.
+
+События сначала атомарно записываются в `group_feed_events`, поэтому сбой Telegram не ломает Mini App.
+Уникальный `dedupe_key` исключает повторную постановку, cron захватывает строки через
+`FOR UPDATE SKIP LOCKED`, восстанавливает processing lease через 10 минут и делает не более пяти попыток.
+Telegram `retry_after` учитывается. Расписание и переключатели редактируются в существующей вкладке
+администратора «Настройки». При пустом chat ID cron безопасно отвечает `GROUP_CHAT_NOT_CONFIGURED`.
 
 ## Безопасность
 

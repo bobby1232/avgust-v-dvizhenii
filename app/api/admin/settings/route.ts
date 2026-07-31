@@ -11,6 +11,15 @@ const settingsSchema = z.object({
   remindersEnabled: z.boolean().optional(),
   reportChatId: z.string().trim().nullable().optional(),
   weeklyReportEnabled: z.boolean().optional(),
+  groupFeedEnabled: z.boolean().optional(),
+  activityDigestEnabled: z.boolean().optional(),
+  activityDigestIntervalMinutes: z.number().int().min(1).max(120).optional(),
+  achievementAnnouncementsEnabled: z.boolean().optional(),
+  leaderboardAnnouncementsEnabled: z.boolean().optional(),
+  leaderboardDayTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  leaderboardEveningTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
+  dailySummaryEnabled: z.boolean().optional(),
+  dailySummaryTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   totalGoal: z.number().int().positive().nullable().optional(),
   nextGroupWorkout: z.string().trim().max(500).nullable().optional(),
   comment: z.string().trim().min(1).max(500),
@@ -39,8 +48,11 @@ export async function PATCH(request: Request) {
     const competition = await activeCompetition();
     const [oldValue] = await db.select().from(contestSettings)
       .where(eq(contestSettings.competitionId, competition.id)).limit(1);
-    const { comment, reminderTime, ...changes } = parsed.data;
-    const values = { ...changes, ...(reminderTime ? { reminderTime: `${reminderTime}:00` } : {}), updatedAt: new Date() };
+    const { comment, reminderTime, leaderboardDayTime, leaderboardEveningTime, dailySummaryTime, ...changes } = parsed.data;
+    const values = { ...changes, ...(reminderTime ? { reminderTime: `${reminderTime}:00` } : {}),
+      ...(leaderboardDayTime ? { leaderboardDayTime: `${leaderboardDayTime}:00` } : {}),
+      ...(leaderboardEveningTime ? { leaderboardEveningTime: `${leaderboardEveningTime}:00` } : {}),
+      ...(dailySummaryTime ? { dailySummaryTime: `${dailySummaryTime}:00` } : {}), updatedAt: new Date() };
     const [settings] = oldValue
       ? await db.update(contestSettings).set(values).where(eq(contestSettings.id, oldValue.id)).returning()
       : await db.insert(contestSettings).values({ competitionId: competition.id, ...values }).returning();
@@ -53,6 +65,9 @@ export async function PATCH(request: Request) {
       newValue: settings,
       comment,
     });
+    await db.insert(auditLogs).values({ actorTelegramId: actor.id, action: "GROUP_FEED_SETTINGS_UPDATED",
+      entityType: "contest_settings", entityId: String(settings.id),
+      payload: { competitionId: competition.id, publicationType: "settings", result: "updated" } });
     return NextResponse.json({ settings });
   } catch (error) {
     return jsonError(error, "admin.settings.patch");

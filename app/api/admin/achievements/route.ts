@@ -5,6 +5,7 @@ import { db } from "@/db/client";
 import { achievementDefinitions, auditLogs, userAchievements, users } from "@/db/schema";
 import { ApiError, jsonError, requireAdmin, zodDetails } from "@/lib/api";
 import { activeCompetition, registeredUser } from "@/lib/data";
+import { enqueueAchievementEvent } from "@/lib/group-feed-outbox";
 
 const changeSchema = z.object({
   userId: z.number().int().positive(),
@@ -84,6 +85,10 @@ export async function POST(request: Request) {
           oldValue: existing ?? null,
           newValue: row,
           comment: parsed.data.comment,
+        });
+        if (!existing) await enqueueAchievementEvent(tx, {
+          id: row.id, competitionId: competition.id, userId: row.userId,
+          achievementId: row.achievementId, source: "manual",
         });
         return row;
       }

@@ -1,6 +1,10 @@
 import { ApiError } from "./api";
 
-type TelegramResponse<T> = { ok: boolean; result?: T; description?: string };
+type TelegramResponse<T> = { ok: boolean; result?: T; description?: string; parameters?: { retry_after?: number } };
+
+export class TelegramApiError extends Error {
+  constructor(message: string, public readonly retryAfter?: number) { super(message); }
+}
 
 export async function telegramRequest<T>(
   method: string,
@@ -15,9 +19,37 @@ export async function telegramRequest<T>(
   });
   const result = await response.json() as TelegramResponse<T>;
   if (!response.ok || !result.ok || !result.result) {
-    throw new Error(result.description || `Telegram API ${response.status}`);
+    throw new TelegramApiError(result.description || `Telegram API ${response.status}`, result.parameters?.retry_after);
   }
   return result.result;
+}
+
+export function escapeTelegramHtml(value: unknown): string {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+export function splitTelegramHtml(text: string, limit = 4000): string[] {
+  if (text.length <= limit) return [text];
+  const parts: string[] = [];
+  let rest = text;
+  while (rest.length > limit) {
+    let cut = rest.lastIndexOf("\n", limit);
+    if (cut < Math.floor(limit / 2)) cut = limit;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n/, "");
+  }
+  if (rest) parts.push(rest);
+  return parts;
+}
+
+export async function sendLongTelegramMessage(chatId: string, text: string,
+  options: { buttonText?: string; buttonUrl?: string } = {}) {
+  const messages: Array<{ message_id: number }> = [];
+  const parts = splitTelegramHtml(text);
+  for (let index = 0; index < parts.length; index += 1) {
+    messages.push(await sendTelegramMessage(chatId, parts[index], index === parts.length - 1 ? options : {}));
+  }
+  return messages;
 }
 
 export async function sendTelegramMessage(
