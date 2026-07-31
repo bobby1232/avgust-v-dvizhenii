@@ -6,10 +6,10 @@ export function activityFeedPayload(activity: {
   id: number; userId: number; activityDate: string; activityType: string;
   customActivityName: string | null; durationMinutes: number; description: string | null;
   createdAt: Date;
-}, user: { displayName: string; department: string | null }) {
+}, user: { displayName: string; department: string | null; telegramUsername: string | null }) {
   return {
     activityId: activity.id, userId: activity.userId, displayName: user.displayName,
-    department: user.department, activityDate: activity.activityDate,
+    telegramUsername: user.telegramUsername, department: user.department, activityDate: activity.activityDate,
     activityType: activity.activityType, customActivityName: activity.customActivityName,
     durationMinutes: activity.durationMinutes, description: activity.description,
     createdAt: activity.createdAt.toISOString(),

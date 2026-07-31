@@ -68,12 +68,18 @@ async function audit(action: string, competitionId: number, events: Event[], pub
       publishedCount: events.length, telegramMessageId: messageId ? String(messageId) : undefined, publicationType, result } });
 }
 
+function participantName(displayName: unknown, telegramUsername: unknown) {
+  const name = h(String(displayName));
+  const username = typeof telegramUsername === "string" ? telegramUsername.trim().replace(/^@+/, "") : "";
+  return username ? `${name} (@${h(username)})` : name;
+}
+
 function activityText(events: Event[], todayActive: number, total: number, todayActivities: number) {
   const lines = events.map(event => { const p = event.payload as any;
     const name = p.activityType === "Другое" ? p.customActivityName || p.activityType : p.activityType;
     const detail = p.description ? ` — ${h(String(p.description).slice(0, 140))}` : "";
     const dept = p.department ? ` (${h(p.department)})` : "";
-    return `🏃 ${h(p.displayName)}${dept} — ${h(name)}, ${p.durationMinutes} мин.${detail}`;
+    return `🏃 ${participantName(p.displayName, p.telegramUsername)}${dept} — ${h(name)}, ${p.durationMinutes} мин.${detail}`;
   });
   return ["🔥 <b>Новые активности в GOSUP GAMES</b>", "", ...lines, "",
     `Сегодня уже отметились: <b>${todayActive} из ${total}</b>`, `Всего активностей сегодня: <b>${todayActivities}</b>`, "",
@@ -117,7 +123,7 @@ export async function processGroupFeed(now = new Date()) {
       .where(and(eq(userAchievements.id, Number(event.entityId)), isNull(userAchievements.revokedAt))).limit(1);
     if (!award) { await finish([event], "skipped"); result.skipped++; continue; }
     const stats = await userStats(award.user.id, competition.id); const manual = award.row.source === "manual";
-    const text = [`${manual ? "🎖 <b>Специальный бейдж</b>" : "🏅 <b>Новый бейдж!</b>"}`, "", `${h(award.user.displayName)} получает:`,
+    const text = [`${manual ? "🎖 <b>Специальный бейдж</b>" : "🏅 <b>Новый бейдж!</b>"}`, "", `${participantName(award.user.displayName, award.user.telegramUsername)} получает:`,
       `${h(award.definition.emoji)} <b>«${h(award.definition.name)}»</b>`, "", h(award.definition.description),
       `Серия: <b>${stats.currentStreak}</b> · активных дней: <b>${stats.activeDays}</b>`, "Поздравим реакциями! 👏", "", "Открыть приложение: @Gosup_comp_bot", "Команда: /app"].join("\n");
     try { const sent = await sendLongTelegramMessage(chatId, text); const id = sent.at(-1)!.message_id;
@@ -129,7 +135,7 @@ export async function processGroupFeed(now = new Date()) {
     if (competitionPhase(competition, now) !== "active") { await finish([event], "skipped"); result.skipped++; continue; }
     let text: string; let action: string;
     if (event.eventType === "leaderboard") {
-      const top = community.participants.slice(0, 10).map((p, i) => `${["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`} ${h(p.displayName)} — ${p.activeDays} активных дней · серия ${p.currentStreak} 🔥 · ${p.achievementCount} бейджа`);
+      const top = community.participants.slice(0, 10).map((p, i) => `${["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`} ${participantName(p.displayName, p.telegramUsername)} — ${p.activeDays} активных дней · серия ${p.currentStreak} 🔥 · ${p.achievementCount} бейджа`);
       const remaining = competition.endDate ? Math.max(0, Math.ceil((Date.parse(competition.endDate) - Date.parse(today)) / 86400000)) : "—";
       text = [`🏆 <b>Лидеры GOSUP GAMES — ${h(today)}</b>`, "", ...top, "", `Сегодня отметились: <b>${todayDays.length} участников</b>`,
         `В игре: <b>${community.registeredParticipants} участник</b>`, `До завершения игры: <b>${remaining} дней</b>`, "", "Продолжаем движение! 💪", "", "Открыть таблицу: @Gosup_comp_bot", "Команда: /app"].join("\n");
