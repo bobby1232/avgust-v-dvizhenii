@@ -7,6 +7,7 @@ import {
   auditLogs,
   users,
 } from "@/db/schema";
+import { enqueueActivityEvent } from "./group-feed-outbox";
 import { ApiError } from "./api";
 import {
   competitionPhase,
@@ -85,6 +86,7 @@ export async function createParticipantActivity(
       activityDate,
       firstActivityId: activity.id,
     }).onConflictDoNothing();
+    await enqueueActivityEvent(tx, competition.id, activity, user);
     await tx.insert(auditLogs).values({
       actorTelegramId,
       action: "activity.created",

@@ -7,6 +7,7 @@ import {
   userAchievements,
 } from "@/db/schema";
 import { eligibleActivityAchievementCodes } from "./achievement-rules";
+import { enqueueAchievementEvent } from "./group-feed-outbox";
 
 export type AwardedAchievement = {
   id: number;
@@ -55,6 +56,9 @@ export async function awardStreakAchievements(
     }))).onConflictDoNothing().returning({ id: userAchievements.id, achievementId: userAchievements.achievementId }) : [];
     const insertedIds = new Set(inserted.map((item) => item.achievementId));
     const awarded = fresh.filter((item) => insertedIds.has(item.id) && !activeIds.has(item.id));
+    for (const row of inserted) await enqueueAchievementEvent(tx, {
+      id: row.id, competitionId, userId, achievementId: row.achievementId, source: "automatic",
+    });
     if (awarded.length) {
       await tx.insert(auditLogs).values(awarded.map((item) => ({
         action: "achievement.awarded",
@@ -144,6 +148,9 @@ export async function awardActivityAchievements(
       achievementId: item.id,
       source: "automatic",
     }))).onConflictDoNothing().returning();
+    for (const row of inserted) await enqueueAchievementEvent(tx, {
+      id: row.id, competitionId, userId, achievementId: row.achievementId, source: "automatic",
+    });
     await tx.insert(auditLogs).values(inserted.map((row) => ({
       action: "achievement.awarded",
       entityType: "user_achievement",

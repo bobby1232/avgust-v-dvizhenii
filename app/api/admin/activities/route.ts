@@ -7,6 +7,7 @@ import { activeCompetition, registeredUser } from "@/lib/data";
 import { isCompetitionDay } from "@/lib/competition-time";
 import { assertActiveActivityType, rebuildActivityDayAndAchievements } from "@/lib/activity-service";
 import { adminActivityPatchSchema, adminActivitySchema } from "@/lib/validation";
+import { enqueueActivityEvent } from "@/lib/group-feed-outbox";
 
 export async function GET() {
   try {
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
     await assertActiveActivityType(parsed.data.activityType);
     const [target] = await db.select().from(users).where(eq(users.id, parsed.data.userId)).limit(1);
     if (!target) throw new ApiError(404, "Участник не найден", "USER_NOT_FOUND");
-    const [activity] = await db.insert(activities).values({
+    const activity = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(activities).values({
       competitionId: competition.id,
       userId: target.id,
       activityDate: parsed.data.activityDate,
@@ -48,14 +50,17 @@ export async function POST(request: Request) {
       status: parsed.data.status,
       createdBy: actorUser.id,
       updatedBy: actorUser.id,
-    }).returning();
-    await db.insert(auditLogs).values({
+      }).returning();
+      if (created.status === "approved") await enqueueActivityEvent(tx, competition.id, created, target);
+      await tx.insert(auditLogs).values({
       actorTelegramId: actor.id,
       action: "admin.activity.created",
       entityType: "activity",
-      entityId: String(activity.id),
-      newValue: activity,
+      entityId: String(created.id),
+      newValue: created,
       comment: parsed.data.comment || null,
+      });
+      return created;
     });
     const recalculation = await rebuildActivityDayAndAchievements(
       competition, target.id, activity.activityDate, actorUser.id);
@@ -89,15 +94,22 @@ export async function PATCH(request: Request) {
       updatedBy: actorUser.id,
       updatedAt: new Date(),
     };
-    const [activity] = await db.update(activities).set(values).where(eq(activities.id, id)).returning();
-    await db.insert(auditLogs).values({
+    const activity = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(activities).set(values).where(eq(activities.id, id)).returning();
+      if (previous.status !== "approved" && updated.status === "approved") {
+        const [owner] = await tx.select().from(users).where(eq(users.id, updated.userId)).limit(1);
+        await enqueueActivityEvent(tx, competition.id, updated, owner);
+      }
+      await tx.insert(auditLogs).values({
       actorTelegramId: actor.id,
       action: "admin.activity.updated",
       entityType: "activity",
       entityId: String(id),
       oldValue: previous,
-      newValue: activity,
+      newValue: updated,
       comment: comment || null,
+      });
+      return updated;
     });
     await rebuildActivityDayAndAchievements(competition, previous.userId, previous.activityDate, actorUser.id);
     const recalculation = await rebuildActivityDayAndAchievements(
