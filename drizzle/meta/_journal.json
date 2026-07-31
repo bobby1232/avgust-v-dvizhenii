@@ -29,6 +29,13 @@
       "when": 1785430800000,
       "tag": "0003_phase0_schema_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785488400000,
+      "tag": "0004_group_feed_outbox",
+      "breakpoints": true
     }
   ]
 }
