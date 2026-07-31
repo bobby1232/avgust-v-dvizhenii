@@ -29,7 +29,17 @@ test("group feed uses textual bot navigation without inline buttons", async () =
   assert.equal(source.match(/Открыть приложение: @Gosup_comp_bot/g)?.length, 2);
   assert.match(source, /Открыть таблицу: @Gosup_comp_bot/);
   assert.match(source, /Продолжить в приложении: @Gosup_comp_bot/);
-  assert.equal(source.match(/Команда: \/app/g)?.length, 4);
+  assert.doesNotMatch(source, /Команда: \/app/);
+});
+
+test("bot start message invites users into the competition through the mini app", async () => {
+  const source = await read("app/api/bot/webhook/route.ts");
+
+  assert.match(source, /command === "\/start"/);
+  assert.match(source, /Приглашаем вас поучаствовать в нашем соревновании/);
+  assert.match(source, /Откройте мини-приложение по кнопке ниже/);
+  assert.match(source, /buttonText: "Участвовать в соревновании"/);
+  assert.match(source, /buttonUrl: appUrl\(\)/);
 });
 
 test("processor uses leases, skip locked, retry ceiling, escaping and message splitting", async () => {
