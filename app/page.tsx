@@ -110,7 +110,7 @@ export default function Home() {
   const [department, setDepartment] = useState("");
   const [activityType, setActivityType] = useState(fallbackActivityTypes[0]);
   const [customActivityName, setCustomActivityName] = useState("");
-  const [durationMinutes, setDurationMinutes] = useState(20);
+  const [durationMinutes, setDurationMinutes] = useState("20");
   const [description, setDescription] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [participantSearch, setParticipantSearch] = useState("");
@@ -230,13 +230,13 @@ export default function Home() {
         body: JSON.stringify({
           activityType,
           customActivityName,
-          durationMinutes,
+          durationMinutes: Number(durationMinutes),
           description,
         }),
       });
       setShowCheckin(false);
       setCustomActivityName("");
-      setDurationMinutes(20);
+      setDurationMinutes("20");
       setDescription("");
       notify(result.dailyCount > 1 ? "Активность сохранена. День уже был засчитан." : "Активность сохранена. День засчитан.");
       if (result.awardedAchievements[0]) setAchievementToast(result.awardedAchievements[0]);
@@ -459,7 +459,7 @@ export default function Home() {
 
     {!me?.registered && <div className="modal-backdrop"><section className="modal"><span className="eyebrow">GOSUP GAMES | 31 день в игре</span><h2>Движение каждый день</h2><p>С 1 по 31 августа отмечайте осознанную физическую активность длительностью от 20 минут.</p><button className="text-button" onClick={() => setShowRules(true)}>Прочитать полные правила</button><label className="note-field">Отображаемое имя<input maxLength={120} value={name} onChange={(event) => setName(event.target.value)}/></label><label className="note-field">Подразделение<input maxLength={120} value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void register()}>Вступить в игру</button></section></div>}
 
-    {showCheckin && <div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={() => setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><label className="note-field">Вид активности<select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{activityTypes.map((type) => <option key={type}>{type}</option>)}</select></label>{activityType === "Другое" && <label className="note-field">Название активности<input maxLength={120} value={customActivityName} onChange={(event) => setCustomActivityName(event.target.value)}/><small>{fieldErrors.customActivityName?.[0]}</small></label>}<label className="note-field">Продолжительность, минут<input type="number" min={20} max={1440} value={durationMinutes} onChange={(event) => setDurationMinutes(Number(event.target.value))}/><small>{fieldErrors.durationMinutes?.[0]}</small></label><label className="note-field">Описание<input maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void checkin()}>Сохранить активность</button></section></div>}
+    {showCheckin && <div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={() => setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><label className="note-field">Вид активности<select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{activityTypes.map((type) => <option key={type}>{type}</option>)}</select></label>{activityType === "Другое" && <label className="note-field">Название активности<input maxLength={120} value={customActivityName} onChange={(event) => setCustomActivityName(event.target.value)}/><small>{fieldErrors.customActivityName?.[0]}</small></label>}<label className="note-field">Продолжительность, минут<input type="text" inputMode="numeric" pattern="[0-9]*" enterKeyHint="done" maxLength={4} value={durationMinutes} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDurationMinutes(event.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}/><small>{fieldErrors.durationMinutes?.[0]}</small></label><label className="note-field">Описание<input maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void checkin()}>Сохранить активность</button></section></div>}
 
     {showRules && <div className="modal-backdrop"><section className="modal rules-modal"><button className="modal-close" onClick={() => setShowRules(false)}>×</button><span className="eyebrow">Правила</span><h2>31 день в игре</h2><p>Игровой день: 00:00–23:59 по Москве. Подходит любая выделенная физическая активность от 20 минут. Несколько тренировок можно сохранить, но календарный день и серия увеличиваются максимум на один. Пропуск обнуляет текущую серию, но не исключает из игры. 20 активных дней дают допуск к розыгрышу. Спортивные результаты участников не сравниваются.</p><b>Не важно, что ты делаешь. Важно — не останавливаться.</b></section></div>}
     {achievementToast && <div className="modal-backdrop"><section className="modal achievement-modal"><span className="achievement-emoji">{achievementToast.emoji}</span><h2>{achievementToast.name}</h2><p>{achievementToast.description}</p><button className="primary" onClick={() => setAchievementToast(null)}>Продолжить</button></section></div>}
