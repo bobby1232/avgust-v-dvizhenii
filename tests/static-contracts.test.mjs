@@ -45,3 +45,10 @@ test("duration input uses a stable numeric keyboard without leading zeroes", asy
   assert.match(page, /replace\(\/\^0\+\(\?=\\d\)\//);
   assert.doesNotMatch(page, /Продолжительность, минут<input type="number"/);
 });
+
+test("admin tab labels keep their width and scroll on narrow screens", async () => {
+  const styles = await readFile("app/globals.css", "utf8");
+  assert.match(styles, /\.admin-tabs \{[^}]*overflow-x: auto/);
+  assert.match(styles, /\.admin-tabs button \{[^}]*flex: 0 0 auto/);
+  assert.match(styles, /\.admin-tabs button \{[^}]*white-space: nowrap/);
+});
