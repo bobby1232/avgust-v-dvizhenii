@@ -46,8 +46,14 @@ export async function POST(request: Request) {
     if (command === "/start") {
       if (user) await db.update(users).set({ botStartedAt: new Date() }).where(eq(users.id, user.id));
       await sendTelegramMessage(chatId,
-        "Добро пожаловать в <b>GOSUP GAMES | 31 день в игре</b>!\nДвигайтесь каждый день и отмечайте активность в приложении.",
-        { buttonText: "Открыть приложение", buttonUrl: appUrl() });
+        [
+          "Добро пожаловать в <b>GOSUP GAMES | 31 день в игре</b>!",
+          "",
+          "Приглашаем вас поучаствовать в нашем соревновании: двигайтесь каждый день, отмечайте активность и следите за своим прогрессом.",
+          "",
+          "Откройте мини-приложение по кнопке ниже, чтобы присоединиться.",
+        ].join("\n"),
+        { buttonText: "Участвовать в соревновании", buttonUrl: appUrl() });
     } else if (command === "/rules") {
       await sendTelegramMessage(chatId, rules);
     } else if (command === "/app") {
