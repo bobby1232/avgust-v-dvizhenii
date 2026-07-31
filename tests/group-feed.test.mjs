@@ -42,6 +42,17 @@ test("processor uses leases, skip locked, retry ceiling, escaping and message sp
   assert.match(telegram, /retry_after/);
 });
 
+test("group messages show a participant's Telegram username in parentheses", async () => {
+  const [service, outbox, data] = await Promise.all([
+    read("lib/group-feed-service.ts"), read("lib/group-feed-outbox.ts"), read("lib/data.ts"),
+  ]);
+  assert.match(service, /function participantName/);
+  assert.match(service, /`\$\{name\} \(@\$\{h\(username\)\}\)`/);
+  assert.equal(service.match(/participantName\(/g)?.length, 4);
+  assert.match(outbox, /telegramUsername: user\.telegramUsername/);
+  assert.match(data, /telegramUsername: user\.telegramUsername/);
+});
+
 test("cron endpoint is bearer protected and has no business payload", async () => {
   const route = await read("app/api/cron/group-feed/route.ts");
   assert.match(route, /authorization/);

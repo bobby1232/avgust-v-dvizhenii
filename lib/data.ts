@@ -110,6 +110,7 @@ export async function communityData(includeInactive = false) {
     return {
       id: user.id,
       displayName: user.displayName,
+      telegramUsername: user.telegramUsername,
       department: user.department,
       registeredAt: user.registeredAt,
       isActive: user.isActive,
