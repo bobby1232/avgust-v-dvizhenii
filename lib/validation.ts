@@ -12,6 +12,7 @@ export const activitySchema = z.object({
   customActivityName: z.string().trim().max(120).optional().default(""),
   durationMinutes: z.number().int().min(20, "Для зачёта активность должна продолжаться не менее 20 минут.").max(1440),
   description: z.string().trim().max(300).optional().default(""),
+  evidencePhotos: z.array(z.string().startsWith("data:image/").max(1_500_000)).min(1, "Приложите хотя бы одно фото").max(2, "Можно приложить не более двух фото"),
 }).superRefine((value, context) => {
   if (value.activityType === "Другое" && !value.customActivityName) {
     context.addIssue({ code: "custom", path: ["customActivityName"], message: "Укажите название активности" });

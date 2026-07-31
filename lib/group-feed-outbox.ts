@@ -5,6 +5,7 @@ type Inserter = { insert: (table: typeof groupFeedEvents) => any };
 export function activityFeedPayload(activity: {
   id: number; userId: number; activityDate: string; activityType: string;
   customActivityName: string | null; durationMinutes: number; description: string | null;
+  evidencePhotos: string[];
   createdAt: Date;
 }, user: { displayName: string; department: string | null; telegramUsername: string | null }) {
   return {
@@ -12,6 +13,7 @@ export function activityFeedPayload(activity: {
     telegramUsername: user.telegramUsername, department: user.department, activityDate: activity.activityDate,
     activityType: activity.activityType, customActivityName: activity.customActivityName,
     durationMinutes: activity.durationMinutes, description: activity.description,
+    evidencePhotos: activity.evidencePhotos,
     createdAt: activity.createdAt.toISOString(),
   };
 }

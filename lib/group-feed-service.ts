@@ -4,7 +4,7 @@ import { activities, activityDays, achievementDefinitions, auditLogs, contestSet
 import { activeCompetition, communityData, favoriteActivity, userStats } from "./data";
 import { competitionPhase, getCompetitionDate } from "./competition-time";
 import { getGroupFeedSchedule, getMoscowTime } from "./group-feed-schedule";
-import { escapeTelegramHtml as h, sendLongTelegramMessage, TelegramApiError } from "./telegram-bot";
+import { escapeTelegramHtml as h, sendLongTelegramMessage, sendTelegramPhotoPost, TelegramApiError } from "./telegram-bot";
 
 type Event = typeof groupFeedEvents.$inferSelect;
 const MAX_ATTEMPTS = 5;
@@ -86,6 +86,15 @@ function activityText(events: Event[], todayActive: number, total: number, today
     "Не важно, что ты делаешь. Важно — не останавливаться.", "", "Открыть приложение: @Gosup_comp_bot"].join("\n");
 }
 
+function singleActivityText(event: Event) {
+  const p = event.payload as any;
+  const name = p.activityType === "Другое" ? p.customActivityName || p.activityType : p.activityType;
+  const detail = p.description ? `\n${h(String(p.description).slice(0, 300))}` : "";
+  const dept = p.department ? ` (${h(p.department)})` : "";
+  return [`🏃 <b>Новая активность в GOSUP GAMES</b>`, "", `${participantName(p.displayName, p.telegramUsername)}${dept}`,
+    `<b>${h(name)}</b> · ${p.durationMinutes} мин.${detail}`, "", "Открыть приложение: @Gosup_comp_bot"].join("\n");
+}
+
 export async function processGroupFeed(now = new Date()) {
   const competition = await activeCompetition();
   const [stored] = await db.select().from(contestSettings).where(eq(contestSettings.competitionId, competition.id)).limit(1);
@@ -107,7 +116,16 @@ export async function processGroupFeed(now = new Date()) {
   const todayDays = await db.select().from(activityDays).where(and(eq(activityDays.competitionId, competition.id), eq(activityDays.activityDate, today)));
 
   const activityEvents = events.filter(e => e.eventType === "activity");
-  if (!settings.activityDigestEnabled) { await finish(activityEvents, "skipped"); result.skipped += activityEvents.length; }
+  if (settings.publishEachActivityEnabled) {
+    for (const event of activityEvents) {
+      try {
+        const photos = (event.payload as any).evidencePhotos as string[];
+        const sent = await sendTelegramPhotoPost(chatId, photos, singleActivityText(event));
+        await finish([event], "sent", sent.message_id); await audit("GROUP_ACTIVITY_SENT", competition.id, [event], "activity", sent.message_id);
+        result.activityDigestsSent++; result.activitiesPublished++;
+      } catch (error) { await finish([event], "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, [event], "activity", undefined, "failed"); result.failed++; }
+    }
+  } else if (!settings.activityDigestEnabled) { await finish(activityEvents, "skipped"); result.skipped += activityEvents.length; }
   else for (let offset = 0; offset < activityEvents.length; offset += 15) {
     const batch = activityEvents.slice(offset, offset + 15);
     try { const sent = await sendLongTelegramMessage(chatId, activityText(batch, todayDays.length, community.registeredParticipants, dayActivities.length));

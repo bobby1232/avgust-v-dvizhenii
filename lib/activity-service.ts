@@ -33,6 +33,7 @@ type ActivityInput = {
   customActivityName?: string;
   durationMinutes: number;
   description?: string;
+  evidencePhotos: string[];
 };
 
 export async function assertActiveActivityType(activityType: string) {
@@ -76,6 +77,8 @@ export async function createParticipantActivity(
       customActivityName: input.customActivityName || null,
       durationMinutes: input.durationMinutes,
       description: input.description || null,
+      evidenceType: "photo",
+      evidencePhotos: input.evidencePhotos,
       status: "approved",
       createdBy: user.id,
       updatedBy: user.id,
@@ -92,7 +95,7 @@ export async function createParticipantActivity(
       action: "activity.created",
       entityType: "activity",
       entityId: String(activity.id),
-      newValue: { activityDate, activityType: input.activityType, durationMinutes: input.durationMinutes },
+      newValue: { activityDate, activityType: input.activityType, durationMinutes: input.durationMinutes, evidencePhotoCount: input.evidencePhotos.length },
     });
     return [counts, activity] as const;
   });

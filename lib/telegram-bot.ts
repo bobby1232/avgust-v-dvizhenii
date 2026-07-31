@@ -24,6 +24,32 @@ export async function telegramRequest<T>(
   return result.result;
 }
 
+function dataUrlFile(value: string, index: number) {
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(value);
+  if (!match) throw new ApiError(400, "Некорректный формат фотографии", "INVALID_PHOTO");
+  const extension = match[1] === "image/jpeg" ? "jpg" : match[1].split("/")[1];
+  return new File([Buffer.from(match[2], "base64")], `activity-${index}.${extension}`, { type: match[1] });
+}
+
+export async function sendTelegramPhotoPost(chatId: string, photos: string[], caption: string): Promise<{ message_id: number }> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new ApiError(503, "Telegram-бот не настроен", "BOT_NOT_CONFIGURED");
+  const form = new FormData();
+  form.set("chat_id", chatId);
+  const media = photos.map((photo, index) => {
+    const key = `photo${index}`;
+    form.set(key, dataUrlFile(photo, index));
+    return { type: "photo", media: `attach://${key}`, ...(index === 0 ? { caption, parse_mode: "HTML" } : {}) };
+  });
+  form.set("media", JSON.stringify(media));
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, { method: "POST", body: form });
+  const result = await response.json() as TelegramResponse<Array<{ message_id: number }>>;
+  if (!response.ok || !result.ok || !result.result?.length) {
+    throw new TelegramApiError(result.description || `Telegram API ${response.status}`, result.parameters?.retry_after);
+  }
+  return result.result[0];
+}
+
 export function escapeTelegramHtml(value: unknown): string {
   return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }

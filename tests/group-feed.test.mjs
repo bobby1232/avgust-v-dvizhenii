@@ -26,7 +26,7 @@ test("group feed uses textual bot navigation without inline buttons", async () =
 
   assert.doesNotMatch(source, /buttonText|buttonUrl|appUrl/);
   assert.doesNotMatch(source, /sendLongTelegramMessage\([^;]*,\s*\{/);
-  assert.equal(source.match(/Открыть приложение: @Gosup_comp_bot/g)?.length, 2);
+  assert.equal(source.match(/Открыть приложение: @Gosup_comp_bot/g)?.length, 3);
   assert.match(source, /Открыть таблицу: @Gosup_comp_bot/);
   assert.match(source, /Продолжить в приложении: @Gosup_comp_bot/);
   assert.doesNotMatch(source, /Команда: \/app/);
@@ -58,9 +58,24 @@ test("group messages show a participant's Telegram username in parentheses", asy
   ]);
   assert.match(service, /function participantName/);
   assert.match(service, /`\$\{name\} \(@\$\{h\(username\)\}\)`/);
-  assert.equal(service.match(/participantName\(/g)?.length, 4);
+  assert.equal(service.match(/participantName\(/g)?.length, 5);
   assert.match(outbox, /telegramUsername: user\.telegramUsername/);
   assert.match(data, /telegramUsername: user\.telegramUsername/);
+});
+
+test("activities require one or two photo proofs and can publish each proof post", async () => {
+  const [validation, migration, service, telegram, settings] = await Promise.all([
+    read("lib/validation.ts"), read("drizzle/0005_activity_photo_proofs.sql"),
+    read("lib/group-feed-service.ts"), read("lib/telegram-bot.ts"), read("app/api/admin/settings/route.ts"),
+  ]);
+  assert.match(validation, /evidencePhotos: z\.array/);
+  assert.match(validation, /\.min\(1/);
+  assert.match(validation, /\.max\(2/);
+  assert.match(migration, /publish_each_activity_enabled/);
+  assert.match(service, /settings\.publishEachActivityEnabled/);
+  assert.match(service, /sendTelegramPhotoPost/);
+  assert.match(telegram, /sendMediaGroup/);
+  assert.match(settings, /publishEachActivityEnabled: z\.boolean/);
 });
 
 test("cron endpoint is bearer protected and has no business payload", async () => {

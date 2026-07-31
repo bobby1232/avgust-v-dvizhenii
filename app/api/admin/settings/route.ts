@@ -13,6 +13,7 @@ const settingsSchema = z.object({
   weeklyReportEnabled: z.boolean().optional(),
   groupFeedEnabled: z.boolean().optional(),
   activityDigestEnabled: z.boolean().optional(),
+  publishEachActivityEnabled: z.boolean().optional(),
   activityDigestIntervalMinutes: z.number().int().min(1).max(120).optional(),
   achievementAnnouncementsEnabled: z.boolean().optional(),
   leaderboardAnnouncementsEnabled: z.boolean().optional(),

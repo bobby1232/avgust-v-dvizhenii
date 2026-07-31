@@ -38,6 +38,13 @@ type AchievementAdmin = {
   definitions: Array<AchievementDto & { isAutomatic: boolean }>;
   awards: Array<{ id: number; userId: number; participant: string; achievementId: number; revokedAt: string | null }>;
 };
+type AdminSettingsResponse = { settings: null | {
+  reminderTime: string; groupFeedEnabled: boolean; activityDigestEnabled: boolean;
+  publishEachActivityEnabled: boolean; activityDigestIntervalMinutes: number;
+  achievementAnnouncementsEnabled: boolean; leaderboardAnnouncementsEnabled: boolean;
+  leaderboardDayTime: string; leaderboardEveningTime: string;
+  dailySummaryEnabled: boolean; dailySummaryTime: string;
+} };
 
 const fallbackActivityTypes = [
   "Бег", "Ходьба", "SUP", "Велосипед", "Плавание", "Тренировка в зале",
@@ -113,6 +120,29 @@ function prepareAvatar(file: File): Promise<string> {
   });
 }
 
+function prepareActivityPhoto(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Не удалось прочитать фотографию"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Выберите изображение JPG, PNG или WEBP"));
+      image.onload = () => {
+        const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(image.naturalWidth * scale);
+        canvas.height = Math.round(image.naturalHeight * scale);
+        const context = canvas.getContext("2d");
+        if (!context) return reject(new Error("Не удалось обработать фотографию"));
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>("today");
   const [adminTab, setAdminTab] = useState<AdminTab>("participants");
@@ -137,6 +167,7 @@ export default function Home() {
   const [customActivityName, setCustomActivityName] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("20");
   const [description, setDescription] = useState("");
+  const [evidencePhotos, setEvidencePhotos] = useState<string[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [participantSearch, setParticipantSearch] = useState("");
   const [achievementUserId, setAchievementUserId] = useState(0);
@@ -145,6 +176,7 @@ export default function Home() {
   const [reminderTime, setReminderTime] = useState("20:00");
   const [groupFeedEnabled, setGroupFeedEnabled] = useState(true);
   const [activityDigestEnabled, setActivityDigestEnabled] = useState(true);
+  const [publishEachActivityEnabled, setPublishEachActivityEnabled] = useState(false);
   const [digestInterval, setDigestInterval] = useState(10);
   const [achievementAnnouncementsEnabled, setAchievementAnnouncementsEnabled] = useState(true);
   const [leaderboardAnnouncementsEnabled, setLeaderboardAnnouncementsEnabled] = useState(true);
@@ -193,11 +225,12 @@ export default function Home() {
 
     if (role !== "admin") return;
 
-    const [summaryResult, usersResult, activitiesResult, achievementsResult] = await Promise.allSettled([
+    const [summaryResult, usersResult, activitiesResult, achievementsResult, settingsResult] = await Promise.allSettled([
       api<AdminStats>("/api/admin/stats"),
       api<{ users: ParticipantDto[] }>("/api/admin/users"),
       api<{ activities: AdminActivityDto[] }>("/api/admin/activities"),
       api<AchievementAdmin>("/api/admin/achievements"),
+      api<AdminSettingsResponse>("/api/admin/settings"),
     ]);
 
     if (summaryResult.status === "fulfilled") setAdminStats(summaryResult.value);
@@ -208,6 +241,20 @@ export default function Home() {
     else logBackgroundFailure("admin-activities", activitiesResult.reason);
     if (achievementsResult.status === "fulfilled") setAchievementAdmin(achievementsResult.value);
     else logBackgroundFailure("admin-achievements", achievementsResult.reason);
+    if (settingsResult.status === "fulfilled" && settingsResult.value.settings) {
+      const settings = settingsResult.value.settings;
+      setReminderTime(settings.reminderTime.slice(0, 5));
+      setGroupFeedEnabled(settings.groupFeedEnabled);
+      setActivityDigestEnabled(settings.activityDigestEnabled);
+      setPublishEachActivityEnabled(settings.publishEachActivityEnabled);
+      setDigestInterval(settings.activityDigestIntervalMinutes);
+      setAchievementAnnouncementsEnabled(settings.achievementAnnouncementsEnabled);
+      setLeaderboardAnnouncementsEnabled(settings.leaderboardAnnouncementsEnabled);
+      setLeaderboardDayTime(settings.leaderboardDayTime.slice(0, 5));
+      setLeaderboardEveningTime(settings.leaderboardEveningTime.slice(0, 5));
+      setDailySummaryEnabled(settings.dailySummaryEnabled);
+      setDailySummaryTime(settings.dailySummaryTime.slice(0, 5));
+    } else if (settingsResult.status === "rejected") logBackgroundFailure("admin-settings", settingsResult.reason);
   }, []);
 
   const load = useCallback(async () => {
@@ -299,12 +346,14 @@ export default function Home() {
           customActivityName,
           durationMinutes: Number(durationMinutes),
           description,
+          evidencePhotos,
         }),
       });
       setShowCheckin(false);
       setCustomActivityName("");
       setDurationMinutes("20");
       setDescription("");
+      setEvidencePhotos([]);
       notify(result.dailyCount > 1 ? "Активность сохранена. День уже был засчитан." : "Активность сохранена. День засчитан.");
       if (result.awardedAchievements[0]) setAchievementToast(result.awardedAchievements[0]);
       if (me) await loadRegisteredData(me.role);
@@ -312,6 +361,18 @@ export default function Home() {
       if (caught instanceof ClientError) setFieldErrors(caught.details);
       notify(caught instanceof Error ? caught.message : "Ошибка сохранения");
     }
+  }
+
+  async function selectEvidencePhotos(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    if (files.length > 2 || files.some(file => !file.type.startsWith("image/") || file.size > 10 * 1024 * 1024)) {
+      notify("Выберите одно или два изображения до 10 МБ каждое");
+      return;
+    }
+    try { setEvidencePhotos(await Promise.all(files.map(prepareActivityPhoto))); }
+    catch (caught) { notify(caught instanceof Error ? caught.message : "Не удалось обработать фотографии"); }
   }
 
   async function updateParticipant(participant: ParticipantDto, changes: Record<string, unknown>) {
@@ -400,7 +461,7 @@ export default function Home() {
         method: "PATCH",
         body: JSON.stringify({
           reminderTime,
-          groupFeedEnabled, activityDigestEnabled, activityDigestIntervalMinutes: digestInterval,
+          groupFeedEnabled, activityDigestEnabled, publishEachActivityEnabled, activityDigestIntervalMinutes: digestInterval,
           achievementAnnouncementsEnabled, leaderboardAnnouncementsEnabled,
           leaderboardDayTime, leaderboardEveningTime, dailySummaryEnabled, dailySummaryTime,
           comment: adminComment || "Изменение настроек через интерфейс",
@@ -523,7 +584,7 @@ export default function Home() {
         {adminTab === "participants" && <section className="section"><label className="note-field">Поиск<input value={participantSearch} onChange={(event) => setParticipantSearch(event.target.value)} placeholder="Имя или подразделение"/></label><div className="people-list">{filteredParticipants.map((participant) => <article key={participant.id}><span className="person-avatar">{participant.displayName[0]}</span><div><b>{participant.displayName}</b><small>{participant.activeDays} дней · {participant.isActive ? "активен" : "отключён"} · уведомления {participant.notificationsEnabled ? "вкл." : "выкл."}</small></div><div className="row-actions"><button onClick={() => void updateParticipant(participant, { isActive: !participant.isActive })}>{participant.isActive ? "Отключить" : "Включить"}</button><button onClick={() => void updateParticipant(participant, { notificationsEnabled: !participant.notificationsEnabled })}>Увед.</button></div></article>)}</div></section>}
         {adminTab === "activities" && <section className="section"><div className="activity-list">{adminActivities.map((item) => <article key={item.activity.id}><span className={`status-dot ${item.activity.status}`}>●</span><div><b>{item.participant} · {item.activity.activityType}</b><small>{item.activity.activityDate} · {item.activity.durationMinutes} мин · {statusLabel(item.activity.status)}</small><div className="row-actions"><button onClick={() => void editActivity(item)}>Изменить</button><button onClick={() => void moderateActivity(item, "approved")}>Подтвердить</button><button onClick={() => void moderateActivity(item, "rejected")}>Отклонить</button><button onClick={() => void removeActivity(item)}>Удалить</button></div></div></article>)}</div></section>}
         {adminTab === "achievements" && <section className="section"><div className="admin-form"><label className="note-field">Участник<select value={achievementUserId} onChange={(event) => setAchievementUserId(Number(event.target.value))}><option value={0}>Выберите</option>{adminParticipants.map((participant) => <option key={participant.id} value={participant.id}>{participant.displayName}</option>)}</select></label><label className="note-field">Достижение<select value={achievementId} onChange={(event) => setAchievementId(Number(event.target.value))}><option value={0}>Выберите</option>{achievementAdmin?.definitions.map((definition) => <option key={definition.id} value={definition.id}>{definition.emoji} {definition.name}</option>)}</select></label><label className="note-field">Комментарий<input value={adminComment} onChange={(event) => setAdminComment(event.target.value)}/></label><div className="row-actions"><button onClick={() => void changeAchievement("award")}>Присвоить</button><button onClick={() => void changeAchievement("revoke")}>Отозвать</button></div></div><div className="badge-list">{achievementAdmin?.definitions.map((definition) => <article key={definition.id}><span>{definition.emoji}</span><div><b>{definition.name}</b><small>{definition.description} · {definition.isAutomatic ? "автоматическое" : "ручное"}</small></div></article>)}</div></section>}
-        {adminTab === "settings" && <section className="section"><div className="admin-form"><label className="note-field">Время напоминания<input type="time" value={reminderTime} onChange={(event) => setReminderTime(event.target.value)}/></label><h3>Групповая лента</h3><label><input type="checkbox" checked={groupFeedEnabled} onChange={e => setGroupFeedEnabled(e.target.checked)}/> Лента включена</label><label><input type="checkbox" checked={activityDigestEnabled} onChange={e => setActivityDigestEnabled(e.target.checked)}/> Дайджест активностей</label><label className="note-field">Интервал, минут<input type="number" min={1} max={120} value={digestInterval} onChange={e => setDigestInterval(Number(e.target.value))}/></label><label><input type="checkbox" checked={achievementAnnouncementsEnabled} onChange={e => setAchievementAnnouncementsEnabled(e.target.checked)}/> Новые бейджи</label><label><input type="checkbox" checked={leaderboardAnnouncementsEnabled} onChange={e => setLeaderboardAnnouncementsEnabled(e.target.checked)}/> Лидерборд</label><label className="note-field">Дневной лидерборд<input type="time" value={leaderboardDayTime} onChange={e => setLeaderboardDayTime(e.target.value)}/></label><label className="note-field">Вечерний лидерборд<input type="time" value={leaderboardEveningTime} onChange={e => setLeaderboardEveningTime(e.target.value)}/></label><label><input type="checkbox" checked={dailySummaryEnabled} onChange={e => setDailySummaryEnabled(e.target.checked)}/> Итоги дня</label><label className="note-field">Время итогов<input type="time" value={dailySummaryTime} onChange={e => setDailySummaryTime(e.target.value)}/></label><label className="note-field">Комментарий<input value={adminComment} onChange={(event) => setAdminComment(event.target.value)}/></label><button className="primary" onClick={() => void saveSettings()}>Сохранить настройки</button></div><div className="settings-list"><a href="/api/admin/export?format=csv"><span>⇩</span><div><b>Скачать CSV</b><small>Participants, Activities, Achievements, Audit</small></div><i>›</i></a></div></section>}
+        {adminTab === "settings" && <section className="section"><div className="admin-form"><label className="note-field">Время напоминания<input type="time" value={reminderTime} onChange={(event) => setReminderTime(event.target.value)}/></label><h3>Групповая лента</h3><label><input type="checkbox" checked={groupFeedEnabled} onChange={e => setGroupFeedEnabled(e.target.checked)}/> Лента включена</label><label><input type="checkbox" checked={activityDigestEnabled} onChange={e => setActivityDigestEnabled(e.target.checked)}/> Дайджест активностей</label><label><input type="checkbox" checked={publishEachActivityEnabled} onChange={e => setPublishEachActivityEnabled(e.target.checked)}/> Публиковать каждую активность с фото</label><label className="note-field">Интервал, минут<input type="number" min={1} max={120} value={digestInterval} onChange={e => setDigestInterval(Number(e.target.value))}/></label><label><input type="checkbox" checked={achievementAnnouncementsEnabled} onChange={e => setAchievementAnnouncementsEnabled(e.target.checked)}/> Новые бейджи</label><label><input type="checkbox" checked={leaderboardAnnouncementsEnabled} onChange={e => setLeaderboardAnnouncementsEnabled(e.target.checked)}/> Лидерборд</label><label className="note-field">Дневной лидерборд<input type="time" value={leaderboardDayTime} onChange={e => setLeaderboardDayTime(e.target.value)}/></label><label className="note-field">Вечерний лидерборд<input type="time" value={leaderboardEveningTime} onChange={e => setLeaderboardEveningTime(e.target.value)}/></label><label><input type="checkbox" checked={dailySummaryEnabled} onChange={e => setDailySummaryEnabled(e.target.checked)}/> Итоги дня</label><label className="note-field">Время итогов<input type="time" value={dailySummaryTime} onChange={e => setDailySummaryTime(e.target.value)}/></label><label className="note-field">Комментарий<input value={adminComment} onChange={(event) => setAdminComment(event.target.value)}/></label><button className="primary" onClick={() => void saveSettings()}>Сохранить настройки</button></div><div className="settings-list"><a href="/api/admin/export?format=csv"><span>⇩</span><div><b>Скачать CSV</b><small>Participants, Activities, Achievements, Audit</small></div><i>›</i></a></div></section>}
         {adminTab === "tools" && <section className="section"><div className="admin-form"><h3>Рассылка</h3><label className="note-field">Аудитория<select value={broadcastAudience} onChange={(event) => setBroadcastAudience(event.target.value)}><option value="all_active">Все активные</option><option value="without_today">Без активности сегодня</option><option value="minimum_active_days">С минимумом активных дней</option></select></label>{broadcastAudience === "minimum_active_days" && <label className="note-field">Минимум дней<input type="number" min={0} max={31} value={broadcastMinimum} onChange={(event) => setBroadcastMinimum(Number(event.target.value))}/></label>}<label className="note-field">Сообщение<input value={broadcastMessage} onChange={(event) => setBroadcastMessage(event.target.value)}/></label><div className="row-actions"><button onClick={() => void previewBroadcast(false)}>Preview</button><button onClick={() => void previewBroadcast(true)}>Подтвердить отправку</button></div><small>{broadcastPreview}</small><h3>Розыгрыш</h3><label className="note-field">Run ID<input value={drawRunId} onChange={(event) => setDrawRunId(event.target.value)} placeholder="Например august-2026-final"/></label><button className="primary" onClick={() => void runDraw()}>Провести розыгрыш</button><small>{drawResult}</small></div></section>}
       </div>}
 
@@ -532,7 +593,7 @@ export default function Home() {
 
     {!me?.registered && <div className="modal-backdrop"><section className="modal"><span className="eyebrow">GOSUP GAMES | 31 день в игре</span><h2>Движение каждый день</h2><p>С 1 по 31 августа отмечайте осознанную физическую активность длительностью от 20 минут.</p><button className="text-button" onClick={() => setShowRules(true)}>Прочитать полные правила</button><label className="note-field">Отображаемое имя<input maxLength={120} value={name} onChange={(event) => setName(event.target.value)}/></label><label className="note-field">Подразделение<input maxLength={120} value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void register()}>Вступить в игру</button></section></div>}
 
-    {showCheckin && <div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={() => setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><label className="note-field">Вид активности<select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{activityTypes.map((type) => <option key={type}>{type}</option>)}</select></label>{activityType === "Другое" && <label className="note-field">Название активности<input maxLength={120} value={customActivityName} onChange={(event) => setCustomActivityName(event.target.value)}/><small>{fieldErrors.customActivityName?.[0]}</small></label>}<label className="note-field">Продолжительность, минут<input type="text" inputMode="numeric" pattern="[0-9]*" enterKeyHint="done" maxLength={4} value={durationMinutes} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDurationMinutes(event.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}/><small>{fieldErrors.durationMinutes?.[0]}</small></label><label className="note-field">Описание<input maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void checkin()}>Сохранить активность</button></section></div>}
+    {showCheckin && <div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={() => setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><label className="note-field">Вид активности<select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{activityTypes.map((type) => <option key={type}>{type}</option>)}</select></label>{activityType === "Другое" && <label className="note-field">Название активности<input maxLength={120} value={customActivityName} onChange={(event) => setCustomActivityName(event.target.value)}/><small>{fieldErrors.customActivityName?.[0]}</small></label>}<label className="note-field">Продолжительность, минут<input type="text" inputMode="numeric" pattern="[0-9]*" enterKeyHint="done" maxLength={4} value={durationMinutes} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDurationMinutes(event.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}/><small>{fieldErrors.durationMinutes?.[0]}</small></label><label className="note-field">Описание<input maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Необязательно"/></label><label className="photo-proof">Фото подтверждения (1–2)<input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={(event) => void selectEvidencePhotos(event)}/><span className="photo-proof-grid">{evidencePhotos.map((photo, index) => <img key={index} src={photo} alt={`Подтверждение ${index + 1}`}/>)}</span><small>{fieldErrors.evidencePhotos?.[0] || "Обязательно приложите одно или два фото"}</small></label><button className="primary" onClick={() => void checkin()}>Сохранить активность</button></section></div>}
 
     {showRules && <div className="modal-backdrop"><section className="modal rules-modal"><button className="modal-close" onClick={() => setShowRules(false)}>×</button><span className="eyebrow">Правила</span><h2>31 день в игре</h2><p>Игровой день: 00:00–23:59 по Москве. Подходит любая выделенная физическая активность от 20 минут. Несколько тренировок можно сохранить, но календарный день и серия увеличиваются максимум на один. Пропуск обнуляет текущую серию, но не исключает из игры. 20 активных дней дают допуск к розыгрышу. Спортивные результаты участников не сравниваются.</p><b>Не важно, что ты делаешь. Важно — не останавливаться.</b></section></div>}
     {showAvatarEditor && <div className="modal-backdrop"><section className="modal avatar-modal"><button className="modal-close" onClick={() => setShowAvatarEditor(false)}>×</button><span className="eyebrow">Профиль</span><h2>Ваше фото</h2><div className="avatar-preview">{avatarPhoto ? <img src={avatarPhoto} alt="Текущая фотография профиля"/> : <span>{initials}</span>}</div><p>Выберите фотографию — мы аккуратно обрежем её по центру. Она сохранится только на этом устройстве.</p><input ref={avatarInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void selectAvatar(event)}/><button className="primary" onClick={() => avatarInput.current?.click()}>{avatarPhoto ? "Заменить фото" : "Выбрать фото"}</button>{avatarPhoto && <button className="text-button avatar-remove" onClick={removeAvatar}>Удалить фото</button>}</section></div>}
