@@ -22,7 +22,9 @@ button { color: inherit; }
 .brand { display: flex; align-items: center; gap: 9px; background: transparent; border: 0; padding: 0; text-align: left; font-size: 9px; letter-spacing: 1.35px; line-height: 1.15; cursor: pointer; }
 .brand b { font-size: 10px; }
 .brand-mark { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 11px; background: var(--green); color: var(--lime); font: 800 18px/1 Georgia, serif; transform: rotate(-4deg); }
-.avatar { border: 0; width: 38px; height: 38px; border-radius: 50%; background: #ebc89d; font-size: 11px; font-weight: 800; cursor: pointer; }
+.avatar { position: relative; display: grid; place-items: center; flex: 0 0 auto; border: 2px solid var(--card); width: 42px; height: 42px; padding: 0; border-radius: 50%; background: #ebc89d; font-size: 11px; font-weight: 800; cursor: pointer; box-shadow: 0 3px 12px rgba(23,35,31,.13); }
+.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.avatar-edit { position: absolute; right: -3px; bottom: -2px; display: grid; place-items: center; width: 17px; height: 17px; border: 2px solid var(--paper); border-radius: 50%; background: var(--green); color: white; font-size: 11px; line-height: 1; }
 .page-heading { padding: 25px 22px 18px; }
 .page-heading p { margin: 0 0 6px; color: var(--muted); font-size: 12px; }
 .page-heading h1 { margin: 0; font: 700 31px/1 Georgia, serif; letter-spacing: -.8px; overflow-wrap: anywhere; }
@@ -33,7 +35,8 @@ button { color: inherit; }
 .hero-card h2 { margin: 0; font: 400 22px/1 Georgia, serif; }
 .hero-card h2 strong { color: var(--lime); font-size: 52px; }
 .streak-orbit { display: grid; place-items: center; width: 66px; height: 66px; border: 1px solid rgba(200,239,92,.35); border-radius: 50%; }
-.streak-orbit span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--lime); color: var(--green); font-size: 25px; }
+.streak-orbit span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--lime); color: var(--green); box-shadow: 0 0 22px rgba(200,239,92,.2); }
+.streak-orbit svg { width: 25px; height: 25px; fill: currentColor; }
 .week-row { display: flex; justify-content: space-between; margin: 24px 0 20px; }
 .day { display: grid; justify-items: center; gap: 8px; font-size: 10px; color: rgba(255,255,255,.58); }
 .day b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(255,255,255,.22); font-size: 11px; color: white; }
@@ -69,6 +72,13 @@ button { color: inherit; }
 .rules-modal p { line-height: 1.55; }
 .achievement-modal { text-align: center; }
 .achievement-emoji { display: block; font-size: 64px; }
+.avatar-modal { text-align: center; }
+.avatar-modal h2 { margin-bottom: 14px; }
+.avatar-modal p { margin: 15px auto 22px; max-width: 330px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.avatar-preview { display: grid; place-items: center; width: 112px; height: 112px; margin: 0 auto; overflow: hidden; border: 4px solid var(--card); border-radius: 50%; background: #ebc89d; box-shadow: 0 10px 30px rgba(23,35,31,.16); font: 700 27px Georgia, serif; }
+.avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-remove { margin-top: 16px; color: #8e3a32; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .admin-form { display: grid; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
 .admin-form h3 { margin: 6px 0 0; font: 700 18px Georgia, serif; }
 .final-card { padding: 20px; border-radius: 20px; color: white; background: linear-gradient(145deg, var(--green), #285f50); }

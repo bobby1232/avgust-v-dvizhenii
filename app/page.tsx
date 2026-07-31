@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActivityDto,
   AchievementDto,
@@ -88,6 +88,31 @@ function logBackgroundFailure(name: string, reason: unknown): void {
   console.error(`[startup:${name}]`, reason instanceof Error ? reason.message : reason);
 }
 
+const avatarStorageKey = "gosup-games-avatar";
+
+function prepareAvatar(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Не удалось прочитать фотографию"));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("Выберите изображение JPG, PNG или WEBP"));
+      image.onload = () => {
+        const size = Math.min(image.naturalWidth, image.naturalHeight);
+        const canvas = document.createElement("canvas");
+        canvas.width = 320;
+        canvas.height = 320;
+        const context = canvas.getContext("2d");
+        if (!context) return reject(new Error("Не удалось обработать фотографию"));
+        context.drawImage(image, (image.naturalWidth - size) / 2, (image.naturalHeight - size) / 2, size, size, 0, 0, 320, 320);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function Home() {
   const [tab, setTab] = useState<Tab>("today");
   const [adminTab, setAdminTab] = useState<AdminTab>("participants");
@@ -124,6 +149,9 @@ export default function Home() {
   const [broadcastPreview, setBroadcastPreview] = useState("");
   const [drawRunId, setDrawRunId] = useState("");
   const [drawResult, setDrawResult] = useState("");
+  const [avatarPhoto, setAvatarPhoto] = useState("");
+  const [showAvatarEditor, setShowAvatarEditor] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -205,6 +233,36 @@ export default function Home() {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
+
+  useEffect(() => {
+    setAvatarPhoto(window.localStorage.getItem(avatarStorageKey) || "");
+  }, []);
+
+  async function selectAvatar(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 10 * 1024 * 1024) {
+      notify("Выберите изображение размером до 10 МБ");
+      return;
+    }
+    try {
+      const prepared = await prepareAvatar(file);
+      window.localStorage.setItem(avatarStorageKey, prepared);
+      setAvatarPhoto(prepared);
+      setShowAvatarEditor(false);
+      notify("Фотография профиля обновлена");
+    } catch (caught) {
+      notify(caught instanceof Error ? caught.message : "Не удалось загрузить фотографию");
+    }
+  }
+
+  function removeAvatar() {
+    window.localStorage.removeItem(avatarStorageKey);
+    setAvatarPhoto("");
+    setShowAvatarEditor(false);
+    notify("Фотография удалена");
+  }
 
   async function register() {
     try {
@@ -406,7 +464,10 @@ export default function Home() {
     <section className="phone">
       <header className="topbar">
         <button className="brand" onClick={() => setTab("today")}><span className="brand-mark">G</span><span>GOSUP GAMES<br/><b>31 ДЕНЬ В ИГРЕ</b></span></button>
-        <button className="avatar" onClick={() => setTab("progress")}>{initials}</button>
+        <button className="avatar" onClick={() => setShowAvatarEditor(true)} aria-label="Изменить фотографию профиля">
+          {avatarPhoto ? <img src={avatarPhoto} alt="Фотография профиля"/> : initials}
+          <span className="avatar-edit" aria-hidden="true">＋</span>
+        </button>
       </header>
       <div className="page-heading">
         <p>{me?.competition.name} · Europe/Moscow</p>
@@ -415,7 +476,7 @@ export default function Home() {
 
       {tab === "today" && <div className="view">
         <section className="hero-card">
-          <div className="hero-top"><div><span className="eyebrow">{checked ? "Сегодня готово" : "Не останавливаемся"}</span><h2><strong>{streak}</strong> дней подряд</h2></div><div className="streak-orbit"><span>↗</span></div></div>
+          <div className="hero-top"><div><span className="eyebrow">{checked ? "Сегодня готово" : "Не останавливаемся"}</span><h2><strong>{streak}</strong> дней подряд</h2></div><div className="streak-orbit" aria-label={`${streak} дней подряд`}><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.6 2.4c.5 3.5-1.9 4.8-3.6 7.1-1.4 1.8-1.2 3.7.1 5.1-.1-2.2 1.2-3.6 2.7-4.8.1 2 1.7 3 2.2 4.6.4 1.3 0 2.6-.8 3.5 2.3-.8 3.8-3 3.8-5.6 0-3.6-2.2-7.2-4.4-9.9ZM10.9 21c-2.8-.4-5-2.8-5-5.8 0-2.2 1.1-4.1 2.8-5.4-.5 3.1.6 4.5 1.8 5.8 1.1 1.2 1.6 2.6.4 5.4Z"/></svg></span></div></div>
           <button className={`primary ${checked ? "complete" : ""}`} onClick={() => setShowCheckin(true)}>{checked ? "＋ Добавить ещё активность" : "Отметить активность"}</button>
           <small>Несколько тренировок сохраняются отдельно, день засчитывается один раз</small>
         </section>
@@ -462,6 +523,7 @@ export default function Home() {
     {showCheckin && <div className="modal-backdrop"><section className="modal"><button className="modal-close" onClick={() => setShowCheckin(false)}>×</button><span className="eyebrow">Активность дня</span><h2>Что сегодня делали?</h2><label className="note-field">Вид активности<select value={activityType} onChange={(event) => setActivityType(event.target.value)}>{activityTypes.map((type) => <option key={type}>{type}</option>)}</select></label>{activityType === "Другое" && <label className="note-field">Название активности<input maxLength={120} value={customActivityName} onChange={(event) => setCustomActivityName(event.target.value)}/><small>{fieldErrors.customActivityName?.[0]}</small></label>}<label className="note-field">Продолжительность, минут<input type="text" inputMode="numeric" pattern="[0-9]*" enterKeyHint="done" maxLength={4} value={durationMinutes} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDurationMinutes(event.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, ""))}/><small>{fieldErrors.durationMinutes?.[0]}</small></label><label className="note-field">Описание<input maxLength={300} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void checkin()}>Сохранить активность</button></section></div>}
 
     {showRules && <div className="modal-backdrop"><section className="modal rules-modal"><button className="modal-close" onClick={() => setShowRules(false)}>×</button><span className="eyebrow">Правила</span><h2>31 день в игре</h2><p>Игровой день: 00:00–23:59 по Москве. Подходит любая выделенная физическая активность от 20 минут. Несколько тренировок можно сохранить, но календарный день и серия увеличиваются максимум на один. Пропуск обнуляет текущую серию, но не исключает из игры. 20 активных дней дают допуск к розыгрышу. Спортивные результаты участников не сравниваются.</p><b>Не важно, что ты делаешь. Важно — не останавливаться.</b></section></div>}
+    {showAvatarEditor && <div className="modal-backdrop"><section className="modal avatar-modal"><button className="modal-close" onClick={() => setShowAvatarEditor(false)}>×</button><span className="eyebrow">Профиль</span><h2>Ваше фото</h2><div className="avatar-preview">{avatarPhoto ? <img src={avatarPhoto} alt="Текущая фотография профиля"/> : <span>{initials}</span>}</div><p>Выберите фотографию — мы аккуратно обрежем её по центру. Она сохранится только на этом устройстве.</p><input ref={avatarInput} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void selectAvatar(event)}/><button className="primary" onClick={() => avatarInput.current?.click()}>{avatarPhoto ? "Заменить фото" : "Выбрать фото"}</button>{avatarPhoto && <button className="text-button avatar-remove" onClick={removeAvatar}>Удалить фото</button>}</section></div>}
     {achievementToast && <div className="modal-backdrop"><section className="modal achievement-modal"><span className="achievement-emoji">{achievementToast.emoji}</span><h2>{achievementToast.name}</h2><p>{achievementToast.description}</p><button className="primary" onClick={() => setAchievementToast(null)}>Продолжить</button></section></div>}
     {toast && <div className="toast">{toast}</div>}
   </main>;
