@@ -28,6 +28,9 @@ Telegram Mini App и бот для игры ежедневной физичес�
 | `APP_URL` | Публичный HTTPS URL Mini App |
 | `CRON_SECRET` | Bearer-секрет cron endpoints |
 | `TELEGRAM_REPORT_CHAT_ID` | Fallback chat ID недельного отчёта и групповой ленты |
+| `LEADERBOARD_DAY_TIME_MSK` | Время дневного лидерборда по Москве, `HH:MM` (по умолчанию `12:00`) |
+| `LEADERBOARD_EVENING_TIME_MSK` | Время вечернего лидерборда по Москве, `HH:MM` (по умолчанию `20:30`) |
+| `DAILY_SUMMARY_TIME_MSK` | Время итогов дня по Москве, `HH:MM` (по умолчанию `21:30`) |
 | `DEV_TELEGRAM_USER_ID` | Локальный пользователь; игнорируется в production |
 | `DATABASE_POOL_SIZE` | Размер пула PostgreSQL, по умолчанию 10 |
 | `ALLOW_DESTRUCTIVE_RESET` | Только локальная защита legacy reset; держите `false` |
@@ -156,7 +159,10 @@ Top-10 дважды в день и вечернюю статистику. В `co
 Уникальный `dedupe_key` исключает повторную постановку, cron захватывает строки через
 `FOR UPDATE SKIP LOCKED`, восстанавливает processing lease через 10 минут и делает не более пяти попыток.
 Telegram `retry_after` учитывается. Расписание и переключатели редактируются в существующей вкладке
-администратора «Настройки». При пустом chat ID cron безопасно отвечает `GROUP_CHAT_NOT_CONFIGURED`.
+администратора «Настройки». Переменные `LEADERBOARD_DAY_TIME_MSK`, `LEADERBOARD_EVENING_TIME_MSK` и
+`DAILY_SUMMARY_TIME_MSK` переопределяют соответствующее расписание и всегда интерпретируются как
+московское время; cron group feed должен запускаться не реже одного раза в 5 минут. При пустом chat ID
+cron безопасно отвечает `GROUP_CHAT_NOT_CONFIGURED`.
 
 ## Безопасность
 

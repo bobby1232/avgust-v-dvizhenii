@@ -2,7 +2,8 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, getPool } from "@/db/client";
 import { activities, activityDays, achievementDefinitions, auditLogs, contestSettings, groupFeedEvents, userAchievements, users } from "@/db/schema";
 import { activeCompetition, communityData, favoriteActivity, userStats } from "./data";
-import { competitionPhase, getCompetitionDate, getCompetitionDateTime } from "./competition-time";
+import { competitionPhase, getCompetitionDate } from "./competition-time";
+import { getGroupFeedSchedule, getMoscowTime } from "./group-feed-schedule";
 import { appUrl, escapeTelegramHtml as h, sendLongTelegramMessage, TelegramApiError } from "./telegram-bot";
 
 type Event = typeof groupFeedEvents.$inferSelect;
@@ -46,16 +47,16 @@ async function finish(events: Event[], status: "sent" | "failed" | "skipped", me
 
 async function schedule(competition: Awaited<ReturnType<typeof activeCompetition>>, settings: typeof contestSettings.$inferSelect, now: Date) {
   if (competitionPhase(competition, now) !== "active") return;
-  const local = getCompetitionDateTime(now, competition.timezone);
   const date = getCompetitionDate(now, competition.timezone);
-  const time = local.toISOString().slice(11, 16);
+  const time = getMoscowTime(now);
+  const publicationTimes = getGroupFeedSchedule(settings);
   const values: Array<typeof groupFeedEvents.$inferInsert> = [];
-  for (const [slot, due] of [["day", settings.leaderboardDayTime], ["evening", settings.leaderboardEveningTime]] as const) {
+  for (const [slot, due] of [["day", publicationTimes.leaderboardDayTime], ["evening", publicationTimes.leaderboardEveningTime]] as const) {
     if (settings.leaderboardAnnouncementsEnabled && time >= due.slice(0, 5)) values.push({ competitionId: competition.id,
       eventType: "leaderboard", entityType: "competition", entityId: String(competition.id),
       dedupeKey: `leaderboard:${competition.id}:${date}:${slot}`, payload: { competitionDate: date, slot } });
   }
-  if (settings.dailySummaryEnabled && time >= settings.dailySummaryTime.slice(0, 5)) values.push({ competitionId: competition.id,
+  if (settings.dailySummaryEnabled && time >= publicationTimes.dailySummaryTime) values.push({ competitionId: competition.id,
     eventType: "daily-summary", entityType: "competition", entityId: String(competition.id),
     dedupeKey: `daily-summary:${competition.id}:${date}:evening`, payload: { competitionDate: date, slot: "evening" } });
   if (values.length) await db.insert(groupFeedEvents).values(values).onConflictDoNothing();
