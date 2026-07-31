@@ -42,6 +42,14 @@ export function splitTelegramHtml(text: string, limit = 4000): string[] {
   return parts;
 }
 
+export function telegramActionButton(chatId: string, text: string, url: string) {
+  // Telegram accepts web_app buttons only in private chats with the bot.
+  // Group and supergroup IDs are negative, so use a regular URL button there.
+  return chatId.startsWith("-")
+    ? { text, url }
+    : { text, web_app: { url } };
+}
+
 export async function sendLongTelegramMessage(chatId: string, text: string,
   options: { buttonText?: string; buttonUrl?: string } = {}) {
   const messages: Array<{ message_id: number }> = [];
@@ -58,10 +66,7 @@ export async function sendTelegramMessage(
   options: { buttonText?: string; buttonUrl?: string } = {},
 ): Promise<{ message_id: number }> {
   const replyMarkup = options.buttonText && options.buttonUrl ? {
-    inline_keyboard: [[{
-      text: options.buttonText,
-      web_app: { url: options.buttonUrl },
-    }]],
+    inline_keyboard: [[telegramActionButton(chatId, options.buttonText, options.buttonUrl)]],
   } : undefined;
   return telegramRequest("sendMessage", {
     chat_id: chatId,
