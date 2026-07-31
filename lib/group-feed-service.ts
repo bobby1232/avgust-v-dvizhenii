@@ -13,7 +13,7 @@ function shortError(error: unknown) {
   return (error instanceof Error ? error.message : "Unknown Telegram error").replace(/bot\d+:[^/\s]+/gi, "bot[redacted]").slice(0, 500);
 }
 
-async function claimEvents(competitionId: number, digestIntervalMinutes: number): Promise<Event[]> {
+async function claimEvents(competitionId: number, digestIntervalMinutes: number, publishEachActivityEnabled: boolean): Promise<Event[]> {
   const client = await getPool().connect();
   try {
     await client.query("BEGIN");
@@ -21,11 +21,16 @@ async function claimEvents(competitionId: number, digestIntervalMinutes: number)
       WHERE competition_id=$1 AND status='processing' AND last_attempt_at < now() - interval '10 minutes'`, [competitionId]);
     const result = await client.query<Event>(`WITH picked AS (
       SELECT id FROM group_feed_events WHERE competition_id=$1 AND available_at<=now()
-        AND (event_type <> 'activity' OR created_at <= now() - ($3 * interval '1 minute'))
+        AND (event_type <> 'activity'
+          OR $4::boolean = true
+          OR CASE WHEN jsonb_typeof(payload->'evidencePhotos') = 'array'
+            THEN jsonb_array_length(payload->'evidencePhotos') > 0 ELSE false END
+          OR created_at <= now() - ($3 * interval '1 minute'))
         AND (status='pending' OR status='failed') AND attempt_count < $2
       ORDER BY available_at,id FOR UPDATE SKIP LOCKED LIMIT 100
     ) UPDATE group_feed_events e SET status='processing', attempt_count=e.attempt_count+1,
-      last_attempt_at=now(), updated_at=now(), error_message=NULL FROM picked WHERE e.id=picked.id RETURNING e.*`, [competitionId, MAX_ATTEMPTS, digestIntervalMinutes]);
+      last_attempt_at=now(), updated_at=now(), error_message=NULL FROM picked WHERE e.id=picked.id RETURNING e.*`,
+      [competitionId, MAX_ATTEMPTS, digestIntervalMinutes, publishEachActivityEnabled]);
     await client.query("COMMIT");
     return result.rows.map((row: any) => ({
       ...row, competitionId: Number(row.competition_id), eventType: row.event_type, entityType: row.entity_type,
@@ -112,7 +117,7 @@ export async function processGroupFeed(now = new Date()) {
   if (!chatId) return { sent: 0, skipped: 0, failed: 0, disabled: true, reason: "GROUP_CHAT_NOT_CONFIGURED" as const };
   if (!settings.groupFeedEnabled) return { sent: 0, skipped: 0, failed: 0, disabled: true, reason: "GROUP_FEED_DISABLED" as const };
   await schedule(competition, settings, now);
-  const events = await claimEvents(competition.id, settings.activityDigestIntervalMinutes);
+  const events = await claimEvents(competition.id, settings.activityDigestIntervalMinutes, settings.publishEachActivityEnabled);
   const result = { activityPostsSent: 0, activityDigestsSent: 0, activitiesPublished: 0, achievementsPublished: 0,
     leaderboardsPublished: 0, dailySummariesPublished: 0, skipped: 0, failed: 0 };
   const today = getCompetitionDate(now, competition.timezone);
