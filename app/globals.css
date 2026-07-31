@@ -9,6 +9,10 @@
   --green: #173f35;
   --orange: #f47e45;
   --line: #deddd5;
+  /* Telegram draws its native controls over the WebView. Keep interactive
+     content below both Telegram's controls and the device notch/status bar. */
+  --app-safe-top: max(var(--tg-content-safe-area-inset-top, 0px), env(safe-area-inset-top, 0px));
+  --app-safe-bottom: max(var(--tg-content-safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
 * { box-sizing: border-box; min-width: 0; }
@@ -17,8 +21,8 @@ body { width: 100%; max-width: 100%; margin: 0; color: var(--ink); font-family: 
 button, input, select { font: inherit; }
 button { color: inherit; }
 .app-shell { min-height: var(--tg-viewport-stable-height, 100dvh); width: 100%; max-width: 100%; padding: 18px; overflow-x: hidden; }
-.phone { position: relative; width: min(100%, 520px); max-width: 100%; min-height: calc(100vh - 36px); margin: 0 auto; background: var(--paper); overflow: hidden; border-radius: 28px; box-shadow: 0 24px 80px rgba(27, 42, 36, .18); padding-bottom: 92px; }
-.topbar { height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 0 22px; border-bottom: 1px solid rgba(23,35,31,.08); }
+.phone { position: relative; width: min(100%, 520px); max-width: 100%; min-height: calc(100vh - 36px); margin: 0 auto; background: var(--paper); overflow: hidden; border-radius: 28px; box-shadow: 0 24px 80px rgba(27, 42, 36, .18); padding-bottom: calc(92px + var(--app-safe-bottom)); }
+.topbar { min-height: calc(76px + var(--app-safe-top)); display: flex; align-items: center; justify-content: space-between; padding: var(--app-safe-top) 22px 0; border-bottom: 1px solid rgba(23,35,31,.08); }
 .brand { display: flex; align-items: center; gap: 9px; background: transparent; border: 0; padding: 0; text-align: left; font-size: 9px; letter-spacing: 1.35px; line-height: 1.15; cursor: pointer; }
 .brand b { font-size: 10px; }
 .brand-mark { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 11px; background: var(--green); color: var(--lime); font: 800 18px/1 Georgia, serif; transform: rotate(-4deg); }
@@ -162,7 +166,7 @@ button { color: inherit; }
 .settings-list button > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #edeadf; }
 .settings-list button i { font-style: normal; font-size: 22px; color: var(--muted); }
 .settings-list input { width: 72px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--paper); font-size: 10px; }
-.bottom-nav { position: absolute; z-index: 10; left: 0; right: 0; bottom: 0; height: 75px; display: grid; grid-template-columns: repeat(4,1fr); background: rgba(255,254,249,.96); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
+.bottom-nav { position: absolute; z-index: 10; left: 0; right: 0; bottom: 0; min-height: calc(75px + var(--app-safe-bottom)); padding-bottom: var(--app-safe-bottom); display: grid; grid-template-columns: repeat(4,1fr); background: rgba(255,254,249,.96); border-top: 1px solid var(--line); backdrop-filter: blur(12px); }
 .bottom-nav button { border: 0; background: transparent; display: grid; justify-items: center; align-content: center; gap: 4px; color: #929994; font-size: 9px; cursor: pointer; }
 .bottom-nav span { font-size: 20px; line-height: 1; }
 .bottom-nav button.active { color: var(--green); font-weight: 800; }
