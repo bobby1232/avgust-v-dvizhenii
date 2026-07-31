@@ -21,6 +21,17 @@ test("activity and achievement writes enqueue only returned physical rows", asyn
   assert.match(outbox, /achievement:\$\{input\.id\}:awarded/);
 });
 
+test("group feed uses textual bot navigation without inline buttons", async () => {
+  const source = await read("lib/group-feed-service.ts");
+
+  assert.doesNotMatch(source, /buttonText|buttonUrl|appUrl/);
+  assert.doesNotMatch(source, /sendLongTelegramMessage\([^;]*,\s*\{/);
+  assert.equal(source.match(/Открыть приложение: @Gosup_comp_bot/g)?.length, 2);
+  assert.match(source, /Открыть таблицу: @Gosup_comp_bot/);
+  assert.match(source, /Продолжить в приложении: @Gosup_comp_bot/);
+  assert.equal(source.match(/Команда: \/app/g)?.length, 4);
+});
+
 test("processor uses leases, skip locked, retry ceiling, escaping and message splitting", async () => {
   const [service, telegram] = await Promise.all([read("lib/group-feed-service.ts"), read("lib/telegram-bot.ts")]);
   assert.match(service, /FOR UPDATE SKIP LOCKED/);
