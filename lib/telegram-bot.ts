@@ -33,7 +33,7 @@ export async function telegramRequest<T>(
   if (newChatId && Object.hasOwn(body, "chat_id")) {
     ({ response, result } = await request({ ...body, chat_id: newChatId }));
   }
-  if (!response.ok || !result.ok || !result.result) {
+  if (!response.ok || !result.ok || result.result === undefined) {
     throw new TelegramApiError(result.description || `Telegram API ${response.status}`, result.parameters?.retry_after);
   }
   return result.result;
@@ -46,31 +46,55 @@ function dataUrlFile(value: string, index: number) {
   return new File([Buffer.from(match[2], "base64")], `activity-${index}.${extension}`, { type: match[1] });
 }
 
-export async function sendTelegramPhotoPost(chatId: string, photos: string[], caption: string): Promise<{ message_id: number }> {
+async function telegramMultipartRequest<T>(
+  method: string,
+  chatId: string,
+  createForm: (targetChatId: string) => FormData,
+): Promise<T> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new ApiError(503, "Telegram-бот не настроен", "BOT_NOT_CONFIGURED");
-  const form = new FormData();
-  form.set("chat_id", chatId);
-  const media = photos.map((photo, index) => {
-    const key = `photo${index}`;
-    form.set(key, dataUrlFile(photo, index));
-    return { type: "photo", media: `attach://${key}`, ...(index === 0 ? { caption, parse_mode: "HTML" } : {}) };
-  });
-  form.set("media", JSON.stringify(media));
-  const request = async () => {
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMediaGroup`, { method: "POST", body: form });
-    return { response, result: await response.json() as TelegramResponse<Array<{ message_id: number }>> };
+  const request = async (targetChatId: string) => {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      body: createForm(targetChatId),
+    });
+    return { response, result: await response.json() as TelegramResponse<T> };
   };
-  let { response, result } = await request();
+  let { response, result } = await request(chatId);
   const newChatId = migratedChatId(result);
-  if (newChatId) {
-    form.set("chat_id", newChatId);
-    ({ response, result } = await request());
-  }
-  if (!response.ok || !result.ok || !result.result?.length) {
+  if (newChatId) ({ response, result } = await request(newChatId));
+  if (!response.ok || !result.ok || result.result === undefined) {
     throw new TelegramApiError(result.description || `Telegram API ${response.status}`, result.parameters?.retry_after);
   }
-  return result.result[0];
+  return result.result;
+}
+
+export async function sendTelegramPhotoPost(chatId: string, photos: string[], caption: string): Promise<{ message_id: number }> {
+  if (!photos.length) return sendTelegramMessage(chatId, caption);
+  if (photos.length === 1) {
+    return telegramMultipartRequest("sendPhoto", chatId, (targetChatId) => {
+      const form = new FormData();
+      form.set("chat_id", targetChatId);
+      form.set("photo", dataUrlFile(photos[0], 0));
+      form.set("caption", caption);
+      form.set("parse_mode", "HTML");
+      return form;
+    });
+  }
+  if (photos.length > 10) throw new ApiError(400, "Можно отправить не более 10 фотографий", "TOO_MANY_PHOTOS");
+  const messages = await telegramMultipartRequest<Array<{ message_id: number }>>("sendMediaGroup", chatId, (targetChatId) => {
+    const form = new FormData();
+    form.set("chat_id", targetChatId);
+    const media = photos.map((photo, index) => {
+      const key = `photo${index}`;
+      form.set(key, dataUrlFile(photo, index));
+      return { type: "photo", media: `attach://${key}`, ...(index === 0 ? { caption, parse_mode: "HTML" } : {}) };
+    });
+    form.set("media", JSON.stringify(media));
+    return form;
+  });
+  if (!messages.length) throw new TelegramApiError("Telegram API returned an empty media group");
+  return messages[0];
 }
 
 export function escapeTelegramHtml(value: unknown): string {
