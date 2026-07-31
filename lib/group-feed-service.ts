@@ -95,6 +95,11 @@ function singleActivityText(event: Event) {
     `<b>${h(name)}</b> · ${p.durationMinutes} мин.${detail}`, "", "Открыть приложение: @Gosup_comp_bot"].join("\n");
 }
 
+function eventPhotos(event: Event): string[] {
+  const photos = (event.payload as Record<string, unknown>).evidencePhotos;
+  return Array.isArray(photos) ? photos.filter((photo): photo is string => typeof photo === "string" && photo.length > 0) : [];
+}
+
 export async function processGroupFeed(now = new Date()) {
   const competition = await activeCompetition();
   const [stored] = await db.select().from(contestSettings).where(eq(contestSettings.competitionId, competition.id)).limit(1);
@@ -108,7 +113,7 @@ export async function processGroupFeed(now = new Date()) {
   if (!settings.groupFeedEnabled) return { sent: 0, skipped: 0, failed: 0, disabled: true, reason: "GROUP_FEED_DISABLED" as const };
   await schedule(competition, settings, now);
   const events = await claimEvents(competition.id, settings.activityDigestIntervalMinutes);
-  const result = { activityDigestsSent: 0, activitiesPublished: 0, achievementsPublished: 0,
+  const result = { activityPostsSent: 0, activityDigestsSent: 0, activitiesPublished: 0, achievementsPublished: 0,
     leaderboardsPublished: 0, dailySummariesPublished: 0, skipped: 0, failed: 0 };
   const today = getCompetitionDate(now, competition.timezone);
   const community = await communityData();
@@ -116,18 +121,23 @@ export async function processGroupFeed(now = new Date()) {
   const todayDays = await db.select().from(activityDays).where(and(eq(activityDays.competitionId, competition.id), eq(activityDays.activityDate, today)));
 
   const activityEvents = events.filter(e => e.eventType === "activity");
-  if (settings.publishEachActivityEnabled) {
-    for (const event of activityEvents) {
-      try {
-        const photos = (event.payload as any).evidencePhotos as string[];
-        const sent = await sendTelegramPhotoPost(chatId, photos, singleActivityText(event));
-        await finish([event], "sent", sent.message_id); await audit("GROUP_ACTIVITY_SENT", competition.id, [event], "activity", sent.message_id);
-        result.activityDigestsSent++; result.activitiesPublished++;
-      } catch (error) { await finish([event], "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, [event], "activity", undefined, "failed"); result.failed++; }
-    }
-  } else if (!settings.activityDigestEnabled) { await finish(activityEvents, "skipped"); result.skipped += activityEvents.length; }
-  else for (let offset = 0; offset < activityEvents.length; offset += 15) {
-    const batch = activityEvents.slice(offset, offset + 15);
+  const individualEvents = settings.publishEachActivityEnabled
+    ? activityEvents
+    : activityEvents.filter((event) => eventPhotos(event).length > 0);
+  const individualIds = new Set(individualEvents.map((event) => event.id));
+  const digestEvents = activityEvents.filter((event) => !individualIds.has(event.id));
+
+  for (const event of individualEvents) {
+    try {
+      const sent = await sendTelegramPhotoPost(chatId, eventPhotos(event), singleActivityText(event));
+      await finish([event], "sent", sent.message_id); await audit("GROUP_ACTIVITY_SENT", competition.id, [event], "activity", sent.message_id);
+      result.activityPostsSent++; result.activitiesPublished++;
+    } catch (error) { await finish([event], "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, [event], "activity", undefined, "failed"); result.failed++; }
+  }
+
+  if (!settings.activityDigestEnabled) { await finish(digestEvents, "skipped"); result.skipped += digestEvents.length; }
+  else for (let offset = 0; offset < digestEvents.length; offset += 15) {
+    const batch = digestEvents.slice(offset, offset + 15);
     try { const sent = await sendLongTelegramMessage(chatId, activityText(batch, todayDays.length, community.registeredParticipants, dayActivities.length));
       const id = sent.at(-1)!.message_id; await finish(batch, "sent", id); await audit("GROUP_ACTIVITY_DIGEST_SENT", competition.id, batch, "activity_digest", id);
       result.activityDigestsSent++; result.activitiesPublished += batch.length;
