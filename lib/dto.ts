@@ -42,6 +42,7 @@ export type ActivityDto = {
   customActivityName: string | null;
   durationMinutes: number;
   description: string | null;
+  evidencePhotos: string[];
   status: ActivityStatus;
   moderationComment: string | null;
   createdAt: string | Date;

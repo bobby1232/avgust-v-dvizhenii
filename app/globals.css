@@ -169,7 +169,7 @@ button { color: inherit; }
 .bottom-nav span { font-size: 20px; line-height: 1; }
 .bottom-nav button.active { color: var(--green); font-weight: 800; }
 .modal-backdrop { position: fixed; z-index: 50; inset: 0; display: grid; place-items: end center; width: 100%; max-width: 100%; padding: 18px; background: rgba(13,29,24,.58); backdrop-filter: blur(5px); overflow-x: hidden; }
-.modal { position: relative; width: min(100%, 490px); max-width: 100%; padding: 26px 22px; border-radius: 25px; background: var(--paper); animation: rise .3s ease; overflow: hidden; }
+.modal { position: relative; width: min(100%, 490px); max-width: 100%; max-height: calc(100dvh - 36px); padding: 26px 22px; border-radius: 25px; background: var(--paper); animation: rise .3s ease; overflow-x: hidden; overflow-y: auto; }
 .modal h2 { margin: 0 0 20px; max-width: 100%; font: 700 clamp(27px, 10vw, 44px)/1.02 Georgia, serif; overflow-wrap: anywhere; }
 .modal-close { position: absolute; right: 18px; top: 16px; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 50%; background: transparent; cursor: pointer; }
 .activity-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -195,3 +195,8 @@ button { color: inherit; }
 .bottom-nav:not(:has(button:nth-child(4))) { grid-template-columns: repeat(3,1fr); }
 .primary.danger { background: #a52a2a; color: white; }
 .primary:disabled { opacity: .45; cursor: not-allowed; }
+.photo-proof { display: grid; gap: 9px; margin: 18px 0; color: var(--muted); font-size: 10px; font-weight: 700; }
+.photo-proof input { width: 100%; padding: 10px; border: 1px dashed var(--green); border-radius: 13px; background: white; }
+.photo-proof-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.photo-proof-grid img { width: 100%; height: 110px; border-radius: 12px; object-fit: cover; }
+.photo-proof small { color: var(--muted); }
