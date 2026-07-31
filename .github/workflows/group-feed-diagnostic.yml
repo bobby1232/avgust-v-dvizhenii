@@ -1,7 +1,7 @@
 name: Temporary group feed diagnostic
 
 on:
-  push:
+  pull_request:
     branches:
       - codex/gosup-games-mvp
   workflow_dispatch:
@@ -11,8 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Wait for Railway deployment
-        run: sleep 20
       - name: Fetch safe group feed diagnostics
         run: |
           set -euo pipefail
