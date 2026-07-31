@@ -4,7 +4,7 @@ import { activities, activityDays, achievementDefinitions, auditLogs, contestSet
 import { activeCompetition, communityData, favoriteActivity, userStats } from "./data";
 import { competitionPhase, getCompetitionDate } from "./competition-time";
 import { getGroupFeedSchedule, getMoscowTime } from "./group-feed-schedule";
-import { appUrl, escapeTelegramHtml as h, sendLongTelegramMessage, TelegramApiError } from "./telegram-bot";
+import { escapeTelegramHtml as h, sendLongTelegramMessage, TelegramApiError } from "./telegram-bot";
 
 type Event = typeof groupFeedEvents.$inferSelect;
 const MAX_ATTEMPTS = 5;
@@ -77,7 +77,7 @@ function activityText(events: Event[], todayActive: number, total: number, today
   });
   return ["🔥 <b>Новые активности в GOSUP GAMES</b>", "", ...lines, "",
     `Сегодня уже отметились: <b>${todayActive} из ${total}</b>`, `Всего активностей сегодня: <b>${todayActivities}</b>`, "",
-    "Не важно, что ты делаешь. Важно — не останавливаться."].join("\n");
+    "Не важно, что ты делаешь. Важно — не останавливаться.", "", "Открыть приложение: @Gosup_comp_bot", "Команда: /app"].join("\n");
 }
 
 export async function processGroupFeed(now = new Date()) {
@@ -104,7 +104,7 @@ export async function processGroupFeed(now = new Date()) {
   if (!settings.activityDigestEnabled) { await finish(activityEvents, "skipped"); result.skipped += activityEvents.length; }
   else for (let offset = 0; offset < activityEvents.length; offset += 15) {
     const batch = activityEvents.slice(offset, offset + 15);
-    try { const sent = await sendLongTelegramMessage(chatId, activityText(batch, todayDays.length, community.registeredParticipants, dayActivities.length), { buttonText: "Открыть приложение", buttonUrl: appUrl() });
+    try { const sent = await sendLongTelegramMessage(chatId, activityText(batch, todayDays.length, community.registeredParticipants, dayActivities.length));
       const id = sent.at(-1)!.message_id; await finish(batch, "sent", id); await audit("GROUP_ACTIVITY_DIGEST_SENT", competition.id, batch, "activity_digest", id);
       result.activityDigestsSent++; result.activitiesPublished += batch.length;
     } catch (error) { await finish(batch, "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, batch, "activity_digest", undefined, "failed"); result.failed += batch.length; }
@@ -119,21 +119,21 @@ export async function processGroupFeed(now = new Date()) {
     const stats = await userStats(award.user.id, competition.id); const manual = award.row.source === "manual";
     const text = [`${manual ? "🎖 <b>Специальный бейдж</b>" : "🏅 <b>Новый бейдж!</b>"}`, "", `${h(award.user.displayName)} получает:`,
       `${h(award.definition.emoji)} <b>«${h(award.definition.name)}»</b>`, "", h(award.definition.description),
-      `Серия: <b>${stats.currentStreak}</b> · активных дней: <b>${stats.activeDays}</b>`, "Поздравим реакциями! 👏"].join("\n");
-    try { const sent = await sendLongTelegramMessage(chatId, text, { buttonText: "Открыть приложение", buttonUrl: appUrl() }); const id = sent.at(-1)!.message_id;
+      `Серия: <b>${stats.currentStreak}</b> · активных дней: <b>${stats.activeDays}</b>`, "Поздравим реакциями! 👏", "", "Открыть приложение: @Gosup_comp_bot", "Команда: /app"].join("\n");
+    try { const sent = await sendLongTelegramMessage(chatId, text); const id = sent.at(-1)!.message_id;
       await finish([event], "sent", id); await audit("GROUP_ACHIEVEMENT_SENT", competition.id, [event], "achievement", id); result.achievementsPublished++;
     } catch (error) { await finish([event], "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, [event], "achievement", undefined, "failed"); result.failed++; }
   }
 
   for (const event of events.filter(e => e.eventType === "leaderboard" || e.eventType === "daily-summary")) {
     if (competitionPhase(competition, now) !== "active") { await finish([event], "skipped"); result.skipped++; continue; }
-    let text: string; let action: string; let buttonText: string;
+    let text: string; let action: string;
     if (event.eventType === "leaderboard") {
       const top = community.participants.slice(0, 10).map((p, i) => `${["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`} ${h(p.displayName)} — ${p.activeDays} активных дней · серия ${p.currentStreak} 🔥 · ${p.achievementCount} бейджа`);
       const remaining = competition.endDate ? Math.max(0, Math.ceil((Date.parse(competition.endDate) - Date.parse(today)) / 86400000)) : "—";
       text = [`🏆 <b>Лидеры GOSUP GAMES — ${h(today)}</b>`, "", ...top, "", `Сегодня отметились: <b>${todayDays.length} участников</b>`,
-        `В игре: <b>${community.registeredParticipants} участник</b>`, `До завершения игры: <b>${remaining} дней</b>`, "", "Продолжаем движение! 💪"].join("\n");
-      action = "GROUP_LEADERBOARD_SENT"; buttonText = "Открыть таблицу";
+        `В игре: <b>${community.registeredParticipants} участник</b>`, `До завершения игры: <b>${remaining} дней</b>`, "", "Продолжаем движение! 💪", "", "Открыть таблицу: @Gosup_comp_bot", "Команда: /app"].join("\n");
+      action = "GROUP_LEADERBOARD_SENT";
     } else {
       const achievementsToday = await db.select().from(userAchievements).where(and(eq(userAchievements.competitionId, competition.id),
         isNull(userAchievements.revokedAt), sql`(${userAchievements.awardedAt} at time zone ${competition.timezone})::date = ${today}::date`));
@@ -142,9 +142,9 @@ export async function processGroupFeed(now = new Date()) {
         `⏳ Ещё в пути: ${Math.max(0, community.registeredParticipants - todayDays.length)} участников`, `🏃 Добавлено активностей: ${dayActivities.length}`,
         `⏱ Общее время движения: ${dayActivities.reduce((s, a) => s + a.durationMinutes, 0).toLocaleString("ru-RU")} минут`, `🔥 Лучшая серия: ${best} дней`,
         `🏅 Получено новых бейджей: ${achievementsToday.length}`, "", popular ? `Самая популярная активность сегодня — ${h(popular)}.` : "Сегодня ещё можно успеть добавить активность.",
-        "", "Завтра продолжаем. Главное — не останавливаться."].join("\n"); action = "GROUP_DAILY_SUMMARY_SENT"; buttonText = "Открыть приложение";
+        "", "Завтра продолжаем. Главное — не останавливаться.", "", "Продолжить в приложении: @Gosup_comp_bot", "Команда: /app"].join("\n"); action = "GROUP_DAILY_SUMMARY_SENT";
     }
-    try { const sent = await sendLongTelegramMessage(chatId, text, { buttonText, buttonUrl: appUrl() }); const id = sent.at(-1)!.message_id;
+    try { const sent = await sendLongTelegramMessage(chatId, text); const id = sent.at(-1)!.message_id;
       await finish([event], "sent", id); await audit(action, competition.id, [event], event.eventType, id);
       if (event.eventType === "leaderboard") result.leaderboardsPublished++; else result.dailySummariesPublished++;
     } catch (error) { await finish([event], "failed", undefined, error); await audit("GROUP_PUBLICATION_FAILED", competition.id, [event], event.eventType, undefined, "failed"); result.failed++; }
