@@ -18,40 +18,6 @@ type ReadinessRow = {
   contest_settings_activity_digest_interval_minutes: boolean;
 };
 
-type FeedSettingsRow = {
-  chat_configured: boolean;
-  group_feed_enabled: boolean;
-  activity_digest_enabled: boolean;
-  activity_digest_interval_minutes: number;
-  achievement_announcements_enabled: boolean;
-  leaderboard_announcements_enabled: boolean;
-  daily_summary_enabled: boolean;
-};
-
-type FeedCountRow = {
-  event_type: string;
-  status: string;
-  count: number;
-};
-
-type FeedEventRow = {
-  event_type: string;
-  status: string;
-  attempt_count: number;
-  error_message: string | null;
-  created_at: Date;
-  last_attempt_at: Date | null;
-  available_at: Date;
-};
-
-function sanitizeError(value: string | null) {
-  if (!value) return null;
-  return value
-    .replace(/bot\d+:[^/\s]+/gi, "bot[redacted]")
-    .replace(/-100\d+/g, "[chat-id]")
-    .slice(0, 300);
-}
-
 export async function GET() {
   try {
     const { getPool } = await import("@/db/client");
@@ -133,6 +99,9 @@ export async function GET() {
       LIMIT 1
     `);
 
+    // Run the same database reads used after Telegram authentication. This makes
+    // Railway readiness fail when the schema technically exists but mobile
+    // startup queries cannot execute against it.
     if (userResult.rows[0]) {
       const userId = userResult.rows[0].id;
       await Promise.all([
@@ -159,69 +128,7 @@ export async function GET() {
       ]);
     }
 
-    const [settingsResult, countsResult, recentResult, auditResult] = await Promise.all([
-      pool.query<FeedSettingsRow>(`
-        SELECT
-          report_chat_id IS NOT NULL AND btrim(report_chat_id::text) <> '' AS chat_configured,
-          group_feed_enabled,
-          activity_digest_enabled,
-          activity_digest_interval_minutes,
-          achievement_announcements_enabled,
-          leaderboard_announcements_enabled,
-          daily_summary_enabled
-        FROM contest_settings
-        WHERE competition_id = $1
-        LIMIT 1
-      `, [competitionId]),
-      pool.query<FeedCountRow>(`
-        SELECT event_type, status, count(*)::int AS count
-        FROM group_feed_events
-        WHERE competition_id = $1
-        GROUP BY event_type, status
-        ORDER BY event_type, status
-      `, [competitionId]),
-      pool.query<FeedEventRow>(`
-        SELECT event_type, status, attempt_count, error_message, created_at, last_attempt_at, available_at
-        FROM group_feed_events
-        WHERE competition_id = $1
-        ORDER BY id DESC
-        LIMIT 12
-      `, [competitionId]),
-      pool.query<{ action: string; result: string; created_at: Date }>(`
-        SELECT action, result, created_at
-        FROM audit_logs
-        WHERE action LIKE 'GROUP_%'
-        ORDER BY id DESC
-        LIMIT 10
-      `),
-    ]);
-
-    const counts = Object.fromEntries(
-      countsResult.rows.map((row) => [`${row.event_type}:${row.status}`, row.count]),
-    );
-
-    return NextResponse.json({
-      status: "ok",
-      groupFeedDiagnostic: {
-        envFallbackConfigured: Boolean(process.env.TELEGRAM_REPORT_CHAT_ID),
-        settings: settingsResult.rows[0] ?? null,
-        counts,
-        recentEvents: recentResult.rows.map((row) => ({
-          eventType: row.event_type,
-          status: row.status,
-          attemptCount: row.attempt_count,
-          error: sanitizeError(row.error_message),
-          createdAt: row.created_at,
-          lastAttemptAt: row.last_attempt_at,
-          availableAt: row.available_at,
-        })),
-        recentAudit: auditResult.rows.map((row) => ({
-          action: row.action,
-          result: row.result,
-          createdAt: row.created_at,
-        })),
-      },
-    });
+    return NextResponse.json({ status: "ok" });
   } catch (error) {
     console.error(
       "[health] Database or startup query unavailable",
