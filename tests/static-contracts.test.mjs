@@ -37,3 +37,11 @@ test("public interface has no reset, XP or ranking language", async () => {
   assert.doesNotMatch(page, /Начать конкурс заново|\bXP\b|лидер|последнее место/i);
   assert.match(page, /GOSUP GAMES/);
 });
+
+test("duration input uses a stable numeric keyboard without leading zeroes", async () => {
+  const page = await readFile("app/page.tsx", "utf8");
+  assert.match(page, /inputMode="numeric"/);
+  assert.match(page, /event\.currentTarget\.select\(\)/);
+  assert.match(page, /replace\(\/\^0\+\(\?=\\d\)\//);
+  assert.doesNotMatch(page, /Продолжительность, минут<input type="number"/);
+});
