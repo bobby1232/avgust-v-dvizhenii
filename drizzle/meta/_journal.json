@@ -2,47 +2,12 @@
   "version": "7",
   "dialect": "postgresql",
   "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1785337200000,
-      "tag": "0000_postgresql",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1785412800000,
-      "tag": "0001_multiple_daily_activities",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1785427200000,
-      "tag": "0002_gosup_games_mvp",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1785430800000,
-      "tag": "0003_phase0_schema_repair",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1785488400000,
-      "tag": "0004_group_feed_outbox",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1785492000000,
-      "tag": "0005_activity_photo_proofs",
-      "breakpoints": true
-    }
+    {"idx":0,"version":"7","when":1785337200000,"tag":"0000_postgresql","breakpoints":true},
+    {"idx":1,"version":"7","when":1785412800000,"tag":"0001_multiple_daily_activities","breakpoints":true},
+    {"idx":2,"version":"7","when":1785427200000,"tag":"0002_gosup_games_mvp","breakpoints":true},
+    {"idx":3,"version":"7","when":1785430800000,"tag":"0003_phase0_schema_repair","breakpoints":true},
+    {"idx":4,"version":"7","when":1785488400000,"tag":"0004_group_feed_outbox","breakpoints":true},
+    {"idx":5,"version":"7","when":1785492000000,"tag":"0005_activity_photo_proofs","breakpoints":true},
+    {"idx":6,"version":"7","when":1785578400000,"tag":"0006_achievement_cards","breakpoints":true}
   ]
 }
