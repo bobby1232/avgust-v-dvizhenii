@@ -59,6 +59,9 @@ export async function POST(request: Request) {
 
     const result = await db.transaction(async (tx) => {
       if (parsed.data.action === "award") {
+        if (existing && !existing.revokedAt) {
+          throw new ApiError(409, "Достижение уже активно", "ACHIEVEMENT_ALREADY_ACTIVE");
+        }
         const [row] = existing
           ? await tx.update(userAchievements).set({
             revokedAt: null,
@@ -86,9 +89,13 @@ export async function POST(request: Request) {
           newValue: row,
           comment: parsed.data.comment,
         });
-        if (!existing) await enqueueAchievementEvent(tx, {
-          id: row.id, competitionId: competition.id, userId: row.userId,
-          achievementId: row.achievementId, source: "manual",
+        await enqueueAchievementEvent(tx, {
+          id: row.id,
+          competitionId: competition.id,
+          userId: row.userId,
+          achievementId: row.achievementId,
+          source: "manual",
+          eventVersion: row.awardedAt.toISOString(),
         });
         return row;
       }
