@@ -28,6 +28,13 @@ const competitionInfo = [
   "Игра проходит с 1 по 31 августа по московскому времени.",
 ].join("\n");
 
+const welcomeMessage = [
+  "👋 <b>Добро пожаловать в GOSUP GAMES!</b>",
+  "",
+  "В августе мы двигаемся каждый день — без гонки за скоростью, километрами и местами.",
+  "Главная цель — сформировать устойчивую привычку не останавливаться.",
+].join("\n");
+
 const rules = [
   "<b>Правила конкурса</b>",
   "",
@@ -44,19 +51,14 @@ const rules = [
 ].join("\n");
 
 async function sendStartSequence(chatId: string): Promise<void> {
-  await sendTelegramMessage(chatId, [
-    "👋 <b>Добро пожаловать в GOSUP GAMES!</b>",
-    "",
-    "В августе мы двигаемся каждый день — без гонки за скоростью, километрами и местами.",
-    "Главная цель — сформировать устойчивую привычку не останавливаться.",
-  ].join("\n"));
-
   try {
     await sendTelegramPhotoPost(chatId, [welcomeBannerDataUrl], competitionInfo);
   } catch (error) {
     console.error("[bot.start.banner]", error);
     await sendTelegramMessage(chatId, competitionInfo);
   }
+
+  await sendTelegramMessage(chatId, welcomeMessage);
 
   await sendTelegramMessage(chatId, rules, {
     buttonText: "Запустить мини-приложение",
