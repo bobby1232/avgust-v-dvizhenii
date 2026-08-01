@@ -5,6 +5,12 @@ type TelegramResponse<T> = { ok: boolean; result?: T; description?: string; para
   migrate_to_chat_id?: number;
 } };
 
+export type TelegramMessageOptions = {
+  buttonText?: string;
+  buttonUrl?: string;
+  messageThreadId?: number;
+};
+
 export class TelegramApiError extends Error {
   constructor(message: string, public readonly retryAfter?: number) { super(message); }
 }
@@ -12,6 +18,27 @@ export class TelegramApiError extends Error {
 function migratedChatId<T>(result: TelegramResponse<T>): string | undefined {
   const chatId = result.parameters?.migrate_to_chat_id;
   return typeof chatId === "number" ? String(chatId) : undefined;
+}
+
+function positiveMessageThreadId(value: unknown, source: string): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(String(value).trim());
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new ApiError(503, `${source} должен быть положительным целым числом`, "INVALID_MESSAGE_THREAD_ID");
+  }
+  return parsed;
+}
+
+export function telegramMessageThreadId(chatId: string, explicit?: number): number | undefined {
+  const explicitThreadId = positiveMessageThreadId(explicit, "messageThreadId");
+  if (explicitThreadId !== undefined) return explicitThreadId;
+
+  const reportChatId = process.env.TELEGRAM_REPORT_CHAT_ID?.trim();
+  if (!reportChatId || reportChatId !== chatId) return undefined;
+  return positiveMessageThreadId(
+    process.env.TELEGRAM_REPORT_MESSAGE_THREAD_ID,
+    "TELEGRAM_REPORT_MESSAGE_THREAD_ID",
+  );
 }
 
 export async function telegramRequest<T>(
@@ -69,12 +96,19 @@ async function telegramMultipartRequest<T>(
   return result.result;
 }
 
-export async function sendTelegramPhotoPost(chatId: string, photos: string[], caption: string): Promise<{ message_id: number }> {
-  if (!photos.length) return sendTelegramMessage(chatId, caption);
+export async function sendTelegramPhotoPost(
+  chatId: string,
+  photos: string[],
+  caption: string,
+  options: Pick<TelegramMessageOptions, "messageThreadId"> = {},
+): Promise<{ message_id: number }> {
+  if (!photos.length) return sendTelegramMessage(chatId, caption, options);
+  const messageThreadId = telegramMessageThreadId(chatId, options.messageThreadId);
   if (photos.length === 1) {
     return telegramMultipartRequest<{ message_id: number }>("sendPhoto", chatId, (targetChatId) => {
       const form = new FormData();
       form.set("chat_id", targetChatId);
+      if (messageThreadId !== undefined) form.set("message_thread_id", String(messageThreadId));
       form.set("photo", dataUrlFile(photos[0], 0));
       form.set("caption", caption);
       form.set("parse_mode", "HTML");
@@ -85,6 +119,7 @@ export async function sendTelegramPhotoPost(chatId: string, photos: string[], ca
   const messages = await telegramMultipartRequest<Array<{ message_id: number }>>("sendMediaGroup", chatId, (targetChatId) => {
     const form = new FormData();
     form.set("chat_id", targetChatId);
+    if (messageThreadId !== undefined) form.set("message_thread_id", String(messageThreadId));
     const media = photos.map((photo, index) => {
       const key = `photo${index}`;
       form.set(key, dataUrlFile(photo, index));
@@ -123,12 +158,18 @@ export function telegramActionButton(chatId: string, text: string, url: string) 
     : { text, web_app: { url } };
 }
 
-export async function sendLongTelegramMessage(chatId: string, text: string,
-  options: { buttonText?: string; buttonUrl?: string } = {}) {
+export async function sendLongTelegramMessage(
+  chatId: string,
+  text: string,
+  options: TelegramMessageOptions = {},
+) {
   const messages: Array<{ message_id: number }> = [];
   const parts = splitTelegramHtml(text);
   for (let index = 0; index < parts.length; index += 1) {
-    messages.push(await sendTelegramMessage(chatId, parts[index], index === parts.length - 1 ? options : {}));
+    const partOptions = index === parts.length - 1
+      ? options
+      : { messageThreadId: options.messageThreadId };
+    messages.push(await sendTelegramMessage(chatId, parts[index], partOptions));
   }
   return messages;
 }
@@ -136,13 +177,15 @@ export async function sendLongTelegramMessage(chatId: string, text: string,
 export async function sendTelegramMessage(
   chatId: string,
   text: string,
-  options: { buttonText?: string; buttonUrl?: string } = {},
+  options: TelegramMessageOptions = {},
 ): Promise<{ message_id: number }> {
   const replyMarkup = options.buttonText && options.buttonUrl ? {
     inline_keyboard: [[telegramActionButton(chatId, options.buttonText, options.buttonUrl)]],
   } : undefined;
+  const messageThreadId = telegramMessageThreadId(chatId, options.messageThreadId);
   return telegramRequest("sendMessage", {
     chat_id: chatId,
+    ...(messageThreadId !== undefined ? { message_thread_id: messageThreadId } : {}),
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
