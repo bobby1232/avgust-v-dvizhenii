@@ -6,6 +6,19 @@ export type AchievementActivity = {
   createdAt?: Date;
 };
 
+export const automaticActivityAchievementCodes = [
+  "FIRST_SUP",
+  "RUNNER",
+  "WORKOUT",
+  "EARLY_START",
+  "FAMILY",
+  "WITH_FRIEND",
+  "RECOVERY",
+  "TRY_NEW",
+  "WEEKEND",
+  "RETURN",
+] as const;
+
 function hasWeekendPair(dates: Set<string>): boolean {
   for (const date of dates) {
     const day = new Date(`${date}T00:00:00Z`).getUTCDay();
@@ -14,22 +27,29 @@ function hasWeekendPair(dates: Set<string>): boolean {
   return false;
 }
 
-function hasReturnStreak(dates: string[], competitionStart: string): boolean {
+function hasReturnStreak(dates: string[]): boolean {
   const sorted = [...new Set(dates)].sort();
-  let hadMiss = false;
+  let hadGapAfterActivity = false;
   let streak = 0;
   let previous = "";
+
   for (const date of sorted) {
     if (!previous) {
-      hadMiss = date > competitionStart;
       streak = 1;
-    } else if (shiftCompetitionDate(previous, 1) === date) {
+      previous = date;
+      continue;
+    }
+
+    if (shiftCompetitionDate(previous, 1) === date) {
       streak += 1;
     } else {
-      hadMiss = true;
+      // A return starts only after a real break that follows an earlier activity.
+      // Starting the competition late is not treated as a return.
+      hadGapAfterActivity = true;
       streak = 1;
     }
-    if (hadMiss && streak >= 7) return true;
+
+    if (hadGapAfterActivity && streak >= 7) return true;
     previous = date;
   }
   return false;
@@ -37,7 +57,7 @@ function hasReturnStreak(dates: string[], competitionStart: string): boolean {
 
 export function eligibleActivityAchievementCodes(
   rows: AchievementActivity[],
-  competitionStart: string,
+  _competitionStart: string,
   timezone = "Europe/Moscow",
 ): string[] {
   const types = new Set(rows.map((row) => row.activityType));
@@ -51,7 +71,7 @@ export function eligibleActivityAchievementCodes(
   if (types.has("Йога") || types.has("Растяжка")) codes.add("RECOVERY");
   if (types.size >= 2) codes.add("TRY_NEW");
   if (hasWeekendPair(dates)) codes.add("WEEKEND");
-  if (hasReturnStreak([...dates], competitionStart)) codes.add("RETURN");
+  if (hasReturnStreak([...dates])) codes.add("RETURN");
   if (rows.some((row) => row.createdAt && Number(new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone,
     hour: "2-digit",
