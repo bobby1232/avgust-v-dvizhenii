@@ -33,7 +33,6 @@ Telegram Mini App и бот для игры ежедневной физичес�
 | `DAILY_SUMMARY_TIME_MSK` | Время итогов дня по Москве, `HH:MM` (по умолчанию `21:30`) |
 | `DEV_TELEGRAM_USER_ID` | Локальный пользователь; игнорируется в production |
 | `DATABASE_POOL_SIZE` | Размер пула PostgreSQL, по умолчанию 10 |
-| `ALLOW_DESTRUCTIVE_RESET` | Только локальная защита legacy reset; держите `false` |
 | `MIGRATION_TEST_DATABASE_URL` | Необязательная disposable PostgreSQL-БД для integration test |
 | `SKIP_COMPETITION_START_DATE_CHECK` | Тестовый режим: `true` разрешает работу до даты начала конкурса; дата окончания продолжает проверяться |
 

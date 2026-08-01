@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
-import { auditLogs, competitions, contestSettings, weeklyThemes } from "@/db/schema";
+import {
+  auditLogs,
+  broadcastResults,
+  broadcastRuns,
+  competitions,
+  contestSettings,
+  drawParticipants,
+  draws,
+  drawWinners,
+  users,
+  weeklyThemes,
+} from "@/db/schema";
 import { ApiError, jsonError, requireAdmin, zodDetails } from "@/lib/api";
 import { createCompetitionSchema, resetSchema } from "@/lib/validation";
 import { shiftCompetitionDate } from "@/lib/competition-time";
@@ -24,18 +35,13 @@ export async function POST(request: Request) {
     const actor = await requireAdmin();
     const body = await request.json();
 
-    if (body?.confirmation !== undefined) {
-      if (process.env.NODE_ENV === "production" || process.env.ALLOW_DESTRUCTIVE_RESET !== "true") {
-        throw new ApiError(403, "Разрушительный сброс отключён", "DESTRUCTIVE_RESET_DISABLED");
-      }
-      const parsedReset = resetSchema.safeParse(body);
-      if (!parsedReset.success) throw new ApiError(400, "Введите фразу «НАЧАТЬ ЗАНОВО»", "INVALID_CONFIRMATION");
-      throw new ApiError(410, "Удаление данных больше не поддерживается. Создайте новый конкурс.", "RESET_REMOVED");
-    }
-
     const parsed = createCompetitionSchema.safeParse(body);
     if (!parsed.success) {
       throw new ApiError(400, "Проверьте параметры конкурса", "VALIDATION_ERROR", zodDetails(parsed.error));
+    }
+    const parsedReset = resetSchema.safeParse(body);
+    if (!parsedReset.success) {
+      throw new ApiError(400, "Введите фразу «УДАЛИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ»", "INVALID_CONFIRMATION");
     }
     const created = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(8122026)`);
@@ -62,13 +68,23 @@ export async function POST(request: Request) {
       })));
       await tx.insert(auditLogs).values({
         actorTelegramId: actor.id,
-        action: "competition.created",
+        action: "competition.reset",
         entityType: "competition",
         entityId: String(competition.id),
         oldValue: previous ?? null,
         newValue: competition,
         comment: parsed.data.comment,
       });
+
+      // These tables have restrictive user foreign keys and must be cleared first.
+      // The remaining participant data is removed by the users table's cascades.
+      await tx.delete(broadcastResults);
+      await tx.delete(broadcastRuns);
+      await tx.delete(drawWinners);
+      await tx.delete(drawParticipants);
+      await tx.delete(draws);
+      await tx.delete(users);
+
       return competition;
     });
     return NextResponse.json({ competition: created }, { status: 201 });
