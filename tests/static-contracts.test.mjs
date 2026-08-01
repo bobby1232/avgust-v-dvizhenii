@@ -46,6 +46,17 @@ test("duration input uses a stable numeric keyboard without leading zeroes", asy
   assert.doesNotMatch(page, /Продолжительность, минут<input type="number"/);
 });
 
+test("photo proof options are included in app and bot rules", async () => {
+  const [page, webhook] = await Promise.all([
+    readFile("app/page.tsx", "utf8"),
+    readFile("app/api/bot/webhook/route.ts", "utf8"),
+  ]);
+  for (const rules of [page, webhook]) {
+    assert.match(rules, /фото из приложения или с часов/);
+    assert.match(rules, /себя рядом с местом или инвентарём/);
+  }
+});
+
 test("admin tab labels keep their width and scroll on narrow screens", async () => {
   const styles = await readFile("app/globals.css", "utf8");
   assert.match(styles, /\.admin-tabs \{[^}]*overflow-x: auto/);
