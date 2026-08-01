@@ -39,7 +39,9 @@ export const adminUserPatchSchema = z.object({
   notificationsEnabled: z.boolean().optional(),
   comment: z.string().trim().max(500).optional(),
 });
-export const resetSchema = z.object({ confirmation: z.literal("НАЧАТЬ ЗАНОВО") });
+export const resetSchema = z.object({
+  confirmation: z.literal("УДАЛИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ"),
+});
 export const createCompetitionSchema = z.object({
   name: trimmed(160),
   startDate: z.iso.date(),
