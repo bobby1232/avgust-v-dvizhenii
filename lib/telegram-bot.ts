@@ -18,9 +18,6 @@ function configuredReportThreadId(chatId: string): number | undefined {
   const rawThreadId = process.env.TELEGRAM_REPORT_THREAD_ID?.trim();
   if (!rawThreadId || !chatId.startsWith("-")) return undefined;
 
-  const configuredChatId = process.env.TELEGRAM_REPORT_CHAT_ID?.trim();
-  if (configuredChatId && configuredChatId !== chatId) return undefined;
-
   const threadId = Number(rawThreadId);
   if (!Number.isInteger(threadId) || threadId <= 0) {
     throw new ApiError(503, "TELEGRAM_REPORT_THREAD_ID должен быть положительным целым числом", "INVALID_REPORT_THREAD_ID");
