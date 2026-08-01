@@ -33,14 +33,22 @@ test("group feed uses textual bot navigation without inline buttons", async () =
   assert.doesNotMatch(source, /Команда: \/app/);
 });
 
-test("bot start message invites users into the competition through the mini app", async () => {
-  const source = await read("app/api/bot/webhook/route.ts");
+test("bot start sends welcome, banner, rules and mini app button", async () => {
+  const [source, banner] = await Promise.all([
+    read("app/api/bot/webhook/route.ts"),
+    read("lib/assets/welcome-banner.ts"),
+  ]);
 
   assert.match(source, /command === "\/start"/);
-  assert.match(source, /Приглашаем вас поучаствовать в нашем соревновании/);
-  assert.match(source, /Откройте мини-приложение по кнопке ниже/);
-  assert.match(source, /buttonText: "Участвовать в соревновании"/);
+  assert.match(source, /Добро пожаловать в GOSUP GAMES/);
+  assert.match(source, /sendTelegramPhotoPost\(chatId, \[welcomeBannerDataUrl\], competitionInfo\)/);
+  assert.match(source, /Правила конкурса/);
+  assert.match(source, /Не важно, что ты делаешь\. Важно — не останавливаться/);
+  assert.match(source, /buttonText: "Запустить мини-приложение"/);
   assert.match(source, /buttonUrl: appUrl\(\)/);
+  assert.match(source, /\[bot\.start\.banner\]/);
+  assert.match(banner, /data:image\/jpeg;base64/);
+  for (const part of [0, 1, 2, 3]) assert.match(banner, new RegExp(`part${part}`));
 });
 
 test("processor uses leases, skip locked, retry ceiling, escaping and message splitting", async () => {
