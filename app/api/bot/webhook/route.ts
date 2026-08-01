@@ -12,6 +12,7 @@ const updateSchema = z.object({
   update_id: z.number().int().nonnegative(),
   message: z.object({
     text: z.string().max(4096).optional(),
+    message_thread_id: z.number().int().positive().optional(),
     chat: z.object({ id: z.union([z.number(), z.string()]) }),
     from: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
   }).optional(),
@@ -95,6 +96,26 @@ export async function POST(request: Request) {
       await sendTelegramMessage(chatId, "Откройте GOSUP GAMES:", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
+    } else if (command === "/topicid") {
+      const messageThreadId = message.message_thread_id;
+      if (!chatId.startsWith("-")) {
+        await sendTelegramMessage(chatId,
+          "Команда <code>/topicid</code> работает только внутри темы в Telegram-группе.");
+      } else if (!messageThreadId) {
+        await sendTelegramMessage(chatId, [
+          "Откройте нужную тему группы и отправьте команду ещё раз:",
+          "<code>/topicid@Gosup_comp_bot</code>",
+        ].join("\n"));
+      } else {
+        await sendTelegramMessage(chatId, [
+          "<b>Параметры темы для Railway</b>",
+          "",
+          `TELEGRAM_REPORT_CHAT_ID=<code>${chatId}</code>`,
+          `TELEGRAM_REPORT_MESSAGE_THREAD_ID=<code>${messageThreadId}</code>`,
+          "",
+          "Добавьте обе переменные в Railway и выполните redeploy.",
+        ].join("\n"), { messageThreadId });
+      }
     } else if (!user) {
       await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении.", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
