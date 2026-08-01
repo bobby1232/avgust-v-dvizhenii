@@ -161,6 +161,7 @@ button { color: inherit; }
 .settings-list b { display: block; font-size: 11px; }
 .settings-list small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 .settings-list button { cursor: pointer; }
+.settings-list button.danger-action { color: #a52a2a; }
 .settings-list button > span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #edeadf; }
 .settings-list button i { font-style: normal; font-size: 22px; color: var(--muted); }
 .settings-list input { width: 72px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--paper); font-size: 10px; }
