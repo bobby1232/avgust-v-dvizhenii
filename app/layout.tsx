@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./database.css";
+import "./achievement-cards.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "https://august.rilabs.tech"),
