@@ -10,10 +10,10 @@ const cardCodes = [
   "WITH_FRIEND", "BAD_WEATHER", "RECOVERY", "TRY_NEW", "WEEKEND", "RETURN",
 ];
 
-function evaluateAchievementRules(expression) {
+function evaluateAchievementRules(argumentsSource) {
   const script = `
     import { eligibleActivityAchievementCodes } from "./lib/achievement-rules.ts";
-    const result = ${expression};
+    const result = eligibleActivityAchievementCodes(${argumentsSource});
     process.stdout.write(JSON.stringify(result));
   `;
   const result = spawnSync(process.execPath, [
@@ -36,7 +36,7 @@ test("a late start is not classified as a return", () => {
   const dates = ["05", "06", "07", "08", "09", "10", "11"];
   const rows = dates.map((day) => ({ activityDate: `2026-08-${day}`, activityType: "Бег" }));
   const codes = evaluateAchievementRules(
-    `${JSON.stringify(rows)}, "2026-08-01", "Europe/Moscow")`,
+    `${JSON.stringify(rows)}, "2026-08-01", "Europe/Moscow"`,
   );
   assert.equal(codes.includes("RETURN"), false);
 });
@@ -45,7 +45,7 @@ test("seven active days after a real gap qualify as a return", () => {
   const dates = ["01", "03", "04", "05", "06", "07", "08", "09"];
   const rows = dates.map((day) => ({ activityDate: `2026-08-${day}`, activityType: "Бег" }));
   const codes = evaluateAchievementRules(
-    `${JSON.stringify(rows)}, "2026-08-01", "Europe/Moscow")`,
+    `${JSON.stringify(rows)}, "2026-08-01", "Europe/Moscow"`,
   );
   assert.equal(codes.includes("RETURN"), true);
 });
