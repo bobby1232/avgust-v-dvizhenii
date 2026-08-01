@@ -10,7 +10,6 @@ import {
   drawParticipants,
   draws,
   drawWinners,
-  users,
   weeklyThemes,
 } from "@/db/schema";
 import { ApiError, jsonError, requireAdmin, zodDetails } from "@/lib/api";
@@ -76,14 +75,20 @@ export async function POST(request: Request) {
         comment: parsed.data.comment,
       });
 
-      // These tables have restrictive user foreign keys and must be cleared first.
-      // The remaining participant data is removed by the users table's cascades.
+      // Broadcast and draw tables are not guaranteed to depend on users directly.
       await tx.delete(broadcastResults);
       await tx.delete(broadcastRuns);
       await tx.delete(drawWinners);
       await tx.delete(drawParticipants);
       await tx.delete(draws);
-      await tx.delete(users);
+
+      // A regular DELETE FROM users can fail when participant tables contain
+      // additional RESTRICT/NO ACTION references (for example awarded_by,
+      // revoked_by, created_by or updated_by). Full reset is intentionally
+      // destructive, so PostgreSQL TRUNCATE ... CASCADE is the correct
+      // operation: it clears every user and all user-dependent results in one
+      // transaction, including the administrator who initiated the reset.
+      await tx.execute(sql`TRUNCATE TABLE "users" RESTART IDENTITY CASCADE`);
 
       return competition;
     });
