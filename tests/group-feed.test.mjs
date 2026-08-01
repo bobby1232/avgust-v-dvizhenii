@@ -16,9 +16,10 @@ test("activity and achievement writes enqueue only returned physical rows", asyn
     read("lib/activity-service.ts"), read("lib/achievement-service.ts"), read("lib/group-feed-outbox.ts"),
   ]);
   assert.match(activity, /enqueueActivityEvent\(tx/);
-  assert.match(achievement, /for \(const row of inserted\) await enqueueAchievementEvent/);
+  assert.match(achievement, /const awardedRows = \[\.\.\.inserted, \.\.\.reactivated\]/);
+  assert.match(achievement, /for \(const row of awardedRows\)/);
   assert.match(outbox, /activity:\$\{activity\.id\}:approved/);
-  assert.match(outbox, /achievement:\$\{input\.id\}:awarded/);
+  assert.match(outbox, /achievement:\$\{input\.id\}:awarded:\$\{eventVersion\}/);
 });
 
 test("group feed uses textual bot navigation without inline buttons", async () => {
@@ -81,8 +82,9 @@ test("activities require one or two photo proofs and can publish each proof post
 });
 
 test("cron endpoint is bearer protected and has no business payload", async () => {
-  const route = await read("app/api/cron/group-feed/route.ts");
-  assert.match(route, /authorization/);
-  assert.match(route, /Bearer \$\{secret\}/);
-  assert.doesNotMatch(route, /request\.json/);
+  const source = await read("app/api/cron/group-feed/route.ts");
+  assert.match(source, /authorization/);
+  assert.match(source, /CRON_SECRET/);
+  assert.match(source, /processGroupFeed\(\)/);
+  assert.doesNotMatch(source, /request\.json/);
 });

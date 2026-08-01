@@ -28,9 +28,12 @@ export async function enqueueActivityEvent(tx: Inserter, competitionId: number,
 
 export async function enqueueAchievementEvent(tx: Inserter, input: {
   id: number; competitionId: number; userId: number; achievementId: number; source: string;
+  eventVersion?: string;
 }) {
+  const eventVersion = input.eventVersion ?? "initial";
   return tx.insert(groupFeedEvents).values({
     competitionId: input.competitionId, eventType: "achievement", entityType: "user_achievement",
-    entityId: String(input.id), dedupeKey: `achievement:${input.id}:awarded`, payload: input,
+    entityId: String(input.id), dedupeKey: `achievement:${input.id}:awarded:${eventVersion}`,
+    payload: input,
   }).onConflictDoNothing().returning();
 }

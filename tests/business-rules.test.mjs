@@ -10,16 +10,18 @@ const competition = {
   endDate: "2026-08-31",
   timezone: "Europe/Moscow",
 };
+const evidencePhotos = ["data:image/jpeg;base64,AA=="];
 
 test("19 minutes is rejected and 20 minutes is accepted", () => {
-  assert.equal(activitySchema.safeParse({ activityType: "Бег", durationMinutes: 19 }).success, false);
-  assert.equal(activitySchema.safeParse({ activityType: "Бег", durationMinutes: 20 }).success, true);
+  assert.equal(activitySchema.safeParse({ activityType: "Бег", durationMinutes: 19, evidencePhotos }).success, false);
+  assert.equal(activitySchema.safeParse({ activityType: "Бег", durationMinutes: 20, evidencePhotos }).success, true);
 });
 
 test("participant payload cannot contain an activity date", () => {
   const result = activitySchema.safeParse({
     activityType: "Бег",
     durationMinutes: 20,
+    evidencePhotos,
     activityDate: "2026-08-10",
   });
   assert.equal(result.success, true);

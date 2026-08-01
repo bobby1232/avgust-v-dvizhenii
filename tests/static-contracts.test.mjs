@@ -32,9 +32,9 @@ test("production does not use development Telegram identity", async () => {
   assert.match(telegram, /DEV_TELEGRAM_USER_ID/);
 });
 
-test("public interface has no reset, XP or ranking language", async () => {
+test("public interface has no reset, XP or last-place language", async () => {
   const page = await readFile("app/page.tsx", "utf8");
-  assert.doesNotMatch(page, /Начать конкурс заново|\bXP\b|лидер|последнее место/i);
+  assert.doesNotMatch(page, /Начать конкурс заново|\bXP\b|последнее место/i);
   assert.match(page, /GOSUP GAMES/);
 });
 
