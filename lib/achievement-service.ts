@@ -42,10 +42,10 @@ async function awardEligibleDefinitions(
   ));
   const existingByAchievementId = new Map(existing.map((item) => [item.achievementId, item]));
   const fresh = eligible.filter((item) => !existingByAchievementId.has(item.id));
-  const revoked = eligible
-    .map((item) => ({ definition: item, award: existingByAchievementId.get(item.id) }))
-    .filter((item): item is { definition: AchievementDefinition; award: typeof existing[number] } =>
-      Boolean(item.award?.revokedAt));
+  const revoked = eligible.flatMap((definition) => {
+    const award = existingByAchievementId.get(definition.id);
+    return award?.revokedAt ? [{ definition, award }] : [];
+  });
   if (!fresh.length && !revoked.length) return [];
 
   return db.transaction(async (tx) => {
