@@ -14,6 +14,20 @@ function migratedChatId<T>(result: TelegramResponse<T>): string | undefined {
   return typeof chatId === "number" ? String(chatId) : undefined;
 }
 
+function configuredReportThreadId(chatId: string): number | undefined {
+  const rawThreadId = process.env.TELEGRAM_REPORT_THREAD_ID?.trim();
+  if (!rawThreadId || !chatId.startsWith("-")) return undefined;
+
+  const configuredChatId = process.env.TELEGRAM_REPORT_CHAT_ID?.trim();
+  if (configuredChatId && configuredChatId !== chatId) return undefined;
+
+  const threadId = Number(rawThreadId);
+  if (!Number.isInteger(threadId) || threadId <= 0) {
+    throw new ApiError(503, "TELEGRAM_REPORT_THREAD_ID должен быть положительным целым числом", "INVALID_REPORT_THREAD_ID");
+  }
+  return threadId;
+}
+
 export async function telegramRequest<T>(
   method: string,
   body: Record<string, unknown>,
@@ -54,9 +68,12 @@ async function telegramMultipartRequest<T>(
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new ApiError(503, "Telegram-бот не настроен", "BOT_NOT_CONFIGURED");
   const request = async (targetChatId: string) => {
+    const form = createForm(targetChatId);
+    const threadId = configuredReportThreadId(targetChatId);
+    if (threadId) form.set("message_thread_id", String(threadId));
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: "POST",
-      body: createForm(targetChatId),
+      body: form,
     });
     return { response, result: await response.json() as TelegramResponse<T> };
   };
@@ -141,8 +158,10 @@ export async function sendTelegramMessage(
   const replyMarkup = options.buttonText && options.buttonUrl ? {
     inline_keyboard: [[telegramActionButton(chatId, options.buttonText, options.buttonUrl)]],
   } : undefined;
+  const threadId = configuredReportThreadId(chatId);
   return telegramRequest("sendMessage", {
     chat_id: chatId,
+    ...(threadId ? { message_thread_id: threadId } : {}),
     text,
     parse_mode: "HTML",
     disable_web_page_preview: true,
