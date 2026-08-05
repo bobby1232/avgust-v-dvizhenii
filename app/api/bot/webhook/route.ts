@@ -6,7 +6,7 @@ import { botUpdates, users } from "@/db/schema";
 import { ApiError, jsonError } from "@/lib/api";
 import { welcomeBannerDataUrl } from "@/lib/assets/welcome-banner";
 import { activeCompetition, userStats } from "@/lib/data";
-import { adminGameCommands, handleGameCommand, publicGameCommands } from "@/lib/bot-game-commands";
+import { adminGameCommands, handleGameCommand, publicGameCommands } from "@/lib/bot-game-command-router";
 import { appUrl, sendTelegramMessage, sendTelegramPhotoPost, setTelegramHeartReaction, telegramRequest } from "@/lib/telegram-bot";
 
 const updateSchema = z.object({
