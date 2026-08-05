@@ -125,9 +125,12 @@ export async function POST(request: Request) {
 
     if (!message?.text || !message.from) return NextResponse.json({ ok: true });
 
+    const messageText = message.text.trim();
+    if (!messageText.startsWith("/")) return NextResponse.json({ ok: true, ignored: "non-command" });
+
     const chatId = String(message.chat.id);
     const telegramId = String(message.from.id);
-    const command = message.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
+    const command = messageText.split(/\s+/)[0].split("@")[0].toLowerCase();
     const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
 
     if (await handleGameCommand(command, chatId, user ?? null)) {
