@@ -59,6 +59,13 @@ function medal(index: number): string {
   return ["🥇", "🥈", "🥉"][index] ?? `${index + 1}.`;
 }
 
+function movementArrow(currentPosition: number, previousPosition: number | null): string {
+  if (!previousPosition) return "←";
+  if (currentPosition < previousPosition) return "↑";
+  if (currentPosition > previousPosition) return "↓";
+  return "→";
+}
+
 function limited(title: string, lines: string[], footer = ""): string {
   let text = `<b>${title}</b>\n\n`;
   for (let index = 0; index < lines.length; index += 1) {
@@ -87,20 +94,34 @@ async function requireCompetition(chatId: string): Promise<number | null> {
 async function sendRating(chatId: string, mode: "minutes" | "days"): Promise<void> {
   const competition = await requireCompetition(chatId); if (!competition) return;
   const metric = mode === "minutes" ? sql`sum(a.duration_minutes)` : sql`count(distinct a.activity_date)`;
-  const result = await db.execute(sql`
-    select u.telegram_username, u.display_name,
-           ${metric}::int as value,
-           count(a.id)::int as activities_count
-    from activities a join users u on u.id = a.user_id
-    where a.competition_id = ${competition} and a.status = 'approved' and u.is_active = true
-    group by u.id, u.telegram_username, u.display_name
-    order by value desc, activities_count desc, u.display_name
-  `);
-  const data = rows(result);
+  const [currentResult, previousResult] = await Promise.all([
+    db.execute(sql`
+      select u.id as user_id, u.telegram_username, u.display_name,
+             ${metric}::int as value,
+             count(a.id)::int as activities_count
+      from activities a join users u on u.id = a.user_id
+      where a.competition_id = ${competition} and a.status = 'approved' and u.is_active = true
+      group by u.id, u.telegram_username, u.display_name
+      order by value desc, activities_count desc, u.display_name
+    `),
+    db.execute(sql`
+      select u.id as user_id,
+             ${metric}::int as value,
+             count(a.id)::int as activities_count
+      from activities a join users u on u.id = a.user_id
+      where a.competition_id = ${competition} and a.status = 'approved' and u.is_active = true
+        and a.activity_date < (now() at time zone 'Europe/Moscow')::date
+      group by u.id, u.display_name
+      order by value desc, activities_count desc, u.display_name
+    `),
+  ]);
+  const data = rows(currentResult);
   if (!data.length) { await sendTelegramMessage(chatId, "Пока нет одобренных активностей."); return; }
+  const previousPositions = new Map(rows(previousResult).map((row, index) => [Number(row.user_id), index + 1]));
   const unit = mode === "minutes" ? "мин." : "дн.";
   await sendTelegramMessage(chatId, limited(mode === "minutes" ? "🏆 Рейтинг по активным минутам" : "📅 Рейтинг по активным дням",
-    data.map((row, i) => `${medal(i)} ${mention(row)} — ${Number(row.value)} ${unit}`)));
+    data.map((row, i) => `${medal(i)} ${movementArrow(i + 1, previousPositions.get(Number(row.user_id)) ?? null)} ${mention(row)} — ${Number(row.value)} ${unit}`),
+    "\n\n↑ поднялся · ↓ опустился · → без изменений · ← новый в рейтинге"));
 }
 
 async function sendStreaks(chatId: string): Promise<void> {
