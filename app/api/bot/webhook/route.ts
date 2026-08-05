@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
 import { botUpdates, users } from "@/db/schema";
@@ -23,6 +23,75 @@ const rules = [
   "Несколько тренировок можно сохранить отдельно, но день засчитывается один раз.",
   "20 активных дней дают участие в розыгрыше.",
 ].join("\n");
+
+type RatingRow = {
+  telegram_username: string | null;
+  display_name: string;
+  total_minutes: number | string;
+  activities_count: number | string;
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function ratingPlace(position: number): string {
+  if (position === 1) return "🥇";
+  if (position === 2) return "🥈";
+  if (position === 3) return "🥉";
+  return `${position}.`;
+}
+
+async function activeMinutesRating(): Promise<string> {
+  const result = await db.execute(sql`
+    SELECT
+      u.telegram_username,
+      u.display_name,
+      SUM(a.duration_minutes)::int AS total_minutes,
+      COUNT(a.id)::int AS activities_count
+    FROM users u
+    INNER JOIN activities a ON a.user_id = u.id
+    INNER JOIN competitions c ON c.id = a.competition_id
+    WHERE u.is_active = true
+      AND c.is_active = true
+      AND a.status = 'approved'
+      AND a.duration_minutes > 0
+    GROUP BY u.id, u.telegram_username, u.display_name
+    ORDER BY total_minutes DESC, activities_count DESC, u.display_name ASC
+  `);
+
+  const rows = result.rows as RatingRow[];
+  if (!rows.length) {
+    return "<b>🏆 Рейтинг по активным минутам</b>\n\nОдобренных активностей пока нет.";
+  }
+
+  const lines = [
+    "<b>🏆 Рейтинг по активным минутам</b>",
+    "",
+  ];
+
+  for (const [index, row] of rows.entries()) {
+    const username = row.telegram_username?.trim().replace(/^@/, "");
+    const participant = username
+      ? `@${escapeHtml(username)}`
+      : escapeHtml(row.display_name);
+    const line = `${ratingPlace(index + 1)} ${participant} — <b>${Number(row.total_minutes)}</b> мин. · ${Number(row.activities_count)} акт.`;
+
+    // Telegram ограничивает сообщение 4096 символами. Оставляем резерв под итоговую строку.
+    if ([...lines, line].join("\n").length > 3900) {
+      lines.push(`… и ещё ${rows.length - index} участник(ов)`);
+      break;
+    }
+    lines.push(line);
+  }
+
+  lines.push("", "🔥 Продолжаем двигаться каждый день!");
+  return lines.join("\n");
+}
 
 export async function POST(request: Request) {
   try {
@@ -58,6 +127,8 @@ export async function POST(request: Request) {
       await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении.", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
+    } else if (["/rating", "/leaderboard", "/rating_minutes", "/рейтинг", "/рейтинг_минут"].includes(command)) {
+      await sendTelegramMessage(chatId, await activeMinutesRating());
     } else if (command === "/progress") {
       const competition = await activeCompetition();
       const stats = await userStats(user.id, competition.id);
