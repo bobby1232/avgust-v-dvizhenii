@@ -32,6 +32,15 @@ test("production does not use development Telegram identity", async () => {
   assert.match(telegram, /DEV_TELEGRAM_USER_ID/);
 });
 
+
+test("participant activities can be created once per 30 minutes", async () => {
+  const service = await readFile("lib/activity-service.ts", "utf8");
+  assert.match(service, /ACTIVITY_CREATION_COOLDOWN_MINUTES = 30/);
+  assert.match(service, /ACTIVITY_CREATION_COOLDOWN/);
+  assert.match(service, /orderBy\(desc\(activities\.createdAt\)\)\.limit\(1\)/);
+  assert.match(service, /assertActivityCreationCooldown\(latestActivity\?\.createdAt \?\? null\)/);
+});
+
 test("admin reset deletes users and requires explicit destructive confirmation", async () => {
   const [page, route] = await Promise.all([
     readFile("app/page.tsx", "utf8"),
