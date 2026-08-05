@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { botUpdates, users } from "@/db/schema";
+import { activities, botUpdates, competitions, users } from "@/db/schema";
 import { ApiError, jsonError } from "@/lib/api";
 import { welcomeBannerDataUrl } from "@/lib/assets/welcome-banner";
 import { activeCompetition, userStats } from "@/lib/data";
@@ -68,6 +68,67 @@ async function sendStartSequence(chatId: string): Promise<void> {
   });
 }
 
+async function sendMinutesRating(chatId: string): Promise<void> {
+  const [competition] = await db.select({ id: competitions.id })
+    .from(competitions)
+    .where(eq(competitions.isActive, true))
+    .limit(1);
+
+  if (!competition) {
+    await sendTelegramMessage(chatId, "Активный конкурс не найден.");
+    return;
+  }
+
+  const totalMinutes = sql<number>`sum(${activities.durationMinutes})`;
+  const activitiesCount = sql<number>`count(${activities.id})`;
+
+  const rating = await db.select({
+    telegramUsername: users.telegramUsername,
+    displayName: users.displayName,
+    totalMinutes,
+    activitiesCount,
+  })
+    .from(activities)
+    .innerJoin(users, eq(users.id, activities.userId))
+    .where(and(
+      eq(activities.competitionId, competition.id),
+      eq(activities.status, "approved"),
+      eq(users.isActive, true),
+    ))
+    .groupBy(users.id, users.telegramUsername, users.displayName)
+    .orderBy(desc(totalMinutes), desc(activitiesCount), users.displayName);
+
+  if (!rating.length) {
+    await sendTelegramMessage(chatId, "Пока нет одобренных активностей для рейтинга.");
+    return;
+  }
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = rating.map((item, index) => {
+    const place = medals[index] ?? `${index + 1}.`;
+    const username = item.telegramUsername?.trim();
+    const participant = username ? `@${username.replace(/^@/, "")}` : item.displayName;
+    return `${place} ${participant} — ${Number(item.totalMinutes)} мин. · ${Number(item.activitiesCount)} акт.`;
+  });
+
+  const header = "<b>🏆 Рейтинг по активным минутам</b>\n\n";
+  const footer = "\n\n🔥 Продолжаем двигаться каждый день!";
+  let body = "";
+  let hiddenCount = 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const candidate = body ? `${body}\n${lines[index]}` : lines[index];
+    if ((header + candidate + footer).length > 3900) {
+      hiddenCount = lines.length - index;
+      break;
+    }
+    body = candidate;
+  }
+
+  const truncated = hiddenCount > 0 ? `${body}\n…и ещё ${hiddenCount} участник(ов)` : body;
+  await sendTelegramMessage(chatId, header + truncated + footer);
+}
+
 export async function POST(request: Request) {
   try {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
@@ -111,6 +172,8 @@ export async function POST(request: Request) {
       await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении.", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
+    } else if (["/rating", "/leaderboard", "/rating_minutes", "/рейтинг", "/рейтинг_минут"].includes(command)) {
+      await sendMinutesRating(chatId);
     } else if (command === "/progress") {
       const competition = await activeCompetition();
       const stats = await userStats(user.id, competition.id);
