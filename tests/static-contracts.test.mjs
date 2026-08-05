@@ -80,3 +80,12 @@ test("admin tab labels keep their width and scroll on narrow screens", async () 
   assert.match(styles, /\.admin-tabs button \{[^}]*flex: 0 0 auto/);
   assert.match(styles, /\.admin-tabs button \{[^}]*white-space: nowrap/);
 });
+
+test("minute and active-day ratings show position movement arrows", async () => {
+  const commands = await readFile("lib/bot-game-commands.ts", "utf8");
+
+  assert.match(commands, /function movementArrow/);
+  assert.match(commands, /previousPositions/);
+  assert.match(commands, /activity_date < \(now\(\) at time zone 'Europe\/Moscow'\)::date/);
+  assert.match(commands, /↑ поднялся · ↓ опустился · → без изменений · ← новый в рейтинге/);
+});
