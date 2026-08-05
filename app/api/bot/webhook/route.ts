@@ -6,7 +6,7 @@ import { activities, botUpdates, competitions, users } from "@/db/schema";
 import { ApiError, jsonError } from "@/lib/api";
 import { welcomeBannerDataUrl } from "@/lib/assets/welcome-banner";
 import { activeCompetition, userStats } from "@/lib/data";
-import { appUrl, sendTelegramMessage, sendTelegramPhotoPost, setTelegramHeartReaction } from "@/lib/telegram-bot";
+import { appUrl, sendTelegramMessage, sendTelegramPhotoPost, setTelegramHeartReaction, telegramRequest } from "@/lib/telegram-bot";
 
 const updateSchema = z.object({
   update_id: z.number().int().nonnegative(),
@@ -23,8 +23,8 @@ const ratingCommands = new Set([
   "/rating",
   "/leaderboard",
   "/rating_minutes",
-  "/рейтинг",
-  "/рейтинг_минут",
+  "/\u0440\u0435\u0439\u0442\u0438\u043d\u0433",
+  "/\u0440\u0435\u0439\u0442\u0438\u043d\u0433_\u043c\u0438\u043d\u0443\u0442",
 ]);
 
 const competitionInfo = [
@@ -67,9 +67,7 @@ async function sendStartSequence(chatId: string): Promise<void> {
     console.error("[bot.start.banner]", error);
     await sendTelegramMessage(chatId, competitionInfo);
   }
-
   await sendTelegramMessage(chatId, welcomeMessage);
-
   await sendTelegramMessage(chatId, rules, {
     buttonText: "Запустить мини-приложение",
     buttonUrl: appUrl(),
@@ -137,12 +135,32 @@ async function sendMinutesRating(chatId: string): Promise<void> {
   await sendTelegramMessage(chatId, header + truncated + footer);
 }
 
+type WebhookInfo = {
+  url: string;
+  has_custom_certificate: boolean;
+  pending_update_count: number;
+  last_error_date?: number;
+  last_error_message?: string;
+  max_connections?: number;
+  allowed_updates?: string[];
+};
+
 export async function GET() {
+  let telegramWebhook: WebhookInfo | { error: string } | null = null;
+  try {
+    telegramWebhook = await telegramRequest<WebhookInfo>("getWebhookInfo", {});
+  } catch (error) {
+    telegramWebhook = { error: error instanceof Error ? error.message : "Unknown Telegram error" };
+  }
+
   return NextResponse.json({
     ok: true,
     service: "telegram-webhook",
     ratingCommands: [...ratingCommands],
     commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
+    telegramWebhook,
+  }, {
+    headers: { "content-type": "application/json; charset=utf-8" },
   });
 }
 
@@ -159,9 +177,8 @@ export async function POST(request: Request) {
     if (!parsed.success) throw new ApiError(400, "Некорректное обновление Telegram", "VALIDATION_ERROR");
 
     acceptedUpdateId = String(parsed.data.update_id);
-    const [accepted] = await db.insert(botUpdates).values({
-      updateId: acceptedUpdateId,
-    }).onConflictDoNothing().returning();
+    const [accepted] = await db.insert(botUpdates).values({ updateId: acceptedUpdateId })
+      .onConflictDoNothing().returning();
     if (!accepted) return NextResponse.json({ ok: true, duplicate: true });
 
     const message = parsed.data.message;
