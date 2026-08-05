@@ -19,6 +19,14 @@ const updateSchema = z.object({
   }).optional(),
 });
 
+const ratingCommands = new Set([
+  "/rating",
+  "/leaderboard",
+  "/rating_minutes",
+  "/рейтинг",
+  "/рейтинг_минут",
+]);
+
 const competitionInfo = [
   "<b>АВГУСТ В ДВИЖЕНИИ</b>",
   "",
@@ -129,31 +137,53 @@ async function sendMinutesRating(chatId: string): Promise<void> {
   await sendTelegramMessage(chatId, header + truncated + footer);
 }
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    service: "telegram-webhook",
+    ratingCommands: [...ratingCommands],
+    commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
+  });
+}
+
 export async function POST(request: Request) {
+  let acceptedUpdateId: string | null = null;
+
   try {
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (!secret || request.headers.get("x-telegram-bot-api-secret-token") !== secret) {
       throw new ApiError(401, "Неверный секрет webhook", "UNAUTHORIZED");
     }
+
     const parsed = updateSchema.safeParse(await request.json());
     if (!parsed.success) throw new ApiError(400, "Некорректное обновление Telegram", "VALIDATION_ERROR");
+
+    acceptedUpdateId = String(parsed.data.update_id);
     const [accepted] = await db.insert(botUpdates).values({
-      updateId: String(parsed.data.update_id),
+      updateId: acceptedUpdateId,
     }).onConflictDoNothing().returning();
     if (!accepted) return NextResponse.json({ ok: true, duplicate: true });
+
     const message = parsed.data.message;
     if (message?.message_thread_id === Number(process.env.TELEGRAM_REPORT_THREAD_ID)) {
       try {
         await setTelegramHeartReaction(String(message.chat.id), message.message_id);
       } catch (error) {
-        // A disabled reaction must not make Telegram retry an otherwise processed update.
         console.error("[bot.thread-reaction]", error);
       }
     }
+
     if (!message?.text || !message.from) return NextResponse.json({ ok: true });
+
     const chatId = String(message.chat.id);
     const telegramId = String(message.from.id);
     const command = message.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
+
+    if (ratingCommands.has(command)) {
+      await sendMinutesRating(chatId);
+      return NextResponse.json({ ok: true });
+    }
+
     const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
 
     if (command === "/start") {
@@ -172,13 +202,11 @@ export async function POST(request: Request) {
       await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении.", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
-    } else if (["/rating", "/leaderboard", "/rating_minutes", "/рейтинг", "/рейтинг_минут"].includes(command)) {
-      await sendMinutesRating(chatId);
     } else if (command === "/progress") {
       const competition = await activeCompetition();
       const stats = await userStats(user.id, competition.id);
       await sendTelegramMessage(chatId, [
-        `<b>Ваш прогресс</b>`,
+        "<b>Ваш прогресс</b>",
         `Активных дней: ${stats.activeDays}`,
         `Текущая серия: ${stats.currentStreak}`,
         `Максимальная серия: ${stats.maxStreak}`,
@@ -203,8 +231,16 @@ export async function POST(request: Request) {
       await db.update(users).set({ notificationsEnabled: enabled }).where(eq(users.id, user.id));
       await sendTelegramMessage(chatId, enabled ? "Вечерние напоминания включены." : "Вечерние напоминания выключены.");
     }
+
     return NextResponse.json({ ok: true });
   } catch (error) {
+    if (acceptedUpdateId) {
+      try {
+        await db.delete(botUpdates).where(eq(botUpdates.updateId, acceptedUpdateId));
+      } catch (cleanupError) {
+        console.error("[bot.webhook.cleanup]", cleanupError);
+      }
+    }
     return jsonError(error, "bot.webhook");
   }
 }
