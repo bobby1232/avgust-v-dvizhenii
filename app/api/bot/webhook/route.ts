@@ -6,11 +6,13 @@ import { botUpdates, users } from "@/db/schema";
 import { ApiError, jsonError } from "@/lib/api";
 import { welcomeBannerDataUrl } from "@/lib/assets/welcome-banner";
 import { activeCompetition, userStats } from "@/lib/data";
-import { appUrl, sendTelegramMessage, sendTelegramPhotoPost } from "@/lib/telegram-bot";
+import { appUrl, sendTelegramMessage, sendTelegramPhotoPost, setTelegramHeartReaction } from "@/lib/telegram-bot";
 
 const updateSchema = z.object({
   update_id: z.number().int().nonnegative(),
   message: z.object({
+    message_id: z.number().int().positive(),
+    message_thread_id: z.number().int().positive().optional(),
     text: z.string().max(4096).optional(),
     chat: z.object({ id: z.union([z.number(), z.string()]) }),
     from: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
@@ -79,6 +81,14 @@ export async function POST(request: Request) {
     }).onConflictDoNothing().returning();
     if (!accepted) return NextResponse.json({ ok: true, duplicate: true });
     const message = parsed.data.message;
+    if (message?.message_thread_id === Number(process.env.TELEGRAM_REPORT_THREAD_ID)) {
+      try {
+        await setTelegramHeartReaction(String(message.chat.id), message.message_id);
+      } catch (error) {
+        // A disabled reaction must not make Telegram retry an otherwise processed update.
+        console.error("[bot.thread-reaction]", error);
+      }
+    }
     if (!message?.text || !message.from) return NextResponse.json({ ok: true });
     const chatId = String(message.chat.id);
     const telegramId = String(message.from.id);

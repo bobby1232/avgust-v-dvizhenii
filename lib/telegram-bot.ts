@@ -166,6 +166,18 @@ export async function sendTelegramMessage(
   });
 }
 
+export async function setTelegramHeartReaction(chatId: string, messageId: number): Promise<boolean> {
+  const threadId = configuredReportThreadId(chatId);
+  if (!threadId) return false;
+
+  await telegramRequest("setMessageReaction", {
+    chat_id: chatId,
+    message_id: messageId,
+    reaction: [{ type: "emoji", emoji: "❤" }],
+  });
+  return true;
+}
+
 export function appUrl(): string {
   const value = process.env.APP_URL;
   if (!value) throw new ApiError(503, "APP_URL не настроен", "APP_URL_NOT_CONFIGURED");
