@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
-import { activities, botUpdates, competitions, users } from "@/db/schema";
+import { botUpdates, users } from "@/db/schema";
 import { ApiError, jsonError } from "@/lib/api";
 import { welcomeBannerDataUrl } from "@/lib/assets/welcome-banner";
 import { activeCompetition, userStats } from "@/lib/data";
+import { adminGameCommands, handleGameCommand, publicGameCommands } from "@/lib/bot-game-commands";
 import { appUrl, sendTelegramMessage, sendTelegramPhotoPost, setTelegramHeartReaction, telegramRequest } from "@/lib/telegram-bot";
 
 const updateSchema = z.object({
@@ -18,14 +19,6 @@ const updateSchema = z.object({
     from: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
   }).optional(),
 });
-
-const ratingCommands = new Set([
-  "/rating",
-  "/leaderboard",
-  "/rating_minutes",
-  "/\u0440\u0435\u0439\u0442\u0438\u043d\u0433",
-  "/\u0440\u0435\u0439\u0442\u0438\u043d\u0433_\u043c\u0438\u043d\u0443\u0442",
-]);
 
 const competitionInfo = [
   "<b>АВГУСТ В ДВИЖЕНИИ</b>",
@@ -43,6 +36,8 @@ const welcomeMessage = [
   "",
   "В августе мы двигаемся каждый день — без гонки за скоростью, километрами и местами.",
   "Главная цель — сформировать устойчивую привычку не останавливаться.",
+  "",
+  "Все игровые команды: /help",
 ].join("\n");
 
 const rules = [
@@ -50,14 +45,12 @@ const rules = [
   "",
   "1. Игровой день — с 00:00 до 23:59 по московскому времени.",
   "2. Засчитывается любая осознанная физическая активность длительностью от 20 минут.",
-  "3. К активности приложите 1–2 фото: фото из приложения или с часов. Если такой возможности нет — сфотографируйте себя рядом с местом или инвентарём для спортивной активности.",
+  "3. К активности приложите 1–2 фото: фото из приложения или с часов. Если такой возможности нет — сфотографируйте себя рядом с местом или инвентарём.",
   "4. Можно добавить несколько тренировок, но календарный день и серия увеличиваются только один раз.",
   "5. Пропуск обнуляет текущую серию, но не удаляет уже набранные активные дни.",
   "6. Минимум 20 активных дней даёт допуск к итоговому розыгрышу.",
   "",
   "<b>Не важно, что ты делаешь. Важно — не останавливаться.</b>",
-  "",
-  "Нажмите кнопку ниже, чтобы открыть мини-приложение, зарегистрироваться и отметить активность.",
 ].join("\n");
 
 async function sendStartSequence(chatId: string): Promise<void> {
@@ -72,67 +65,6 @@ async function sendStartSequence(chatId: string): Promise<void> {
     buttonText: "Запустить мини-приложение",
     buttonUrl: appUrl(),
   });
-}
-
-async function sendMinutesRating(chatId: string): Promise<void> {
-  const [competition] = await db.select({ id: competitions.id })
-    .from(competitions)
-    .where(eq(competitions.isActive, true))
-    .limit(1);
-
-  if (!competition) {
-    await sendTelegramMessage(chatId, "Активный конкурс не найден.");
-    return;
-  }
-
-  const totalMinutes = sql<number>`sum(${activities.durationMinutes})`;
-  const activitiesCount = sql<number>`count(${activities.id})`;
-
-  const rating = await db.select({
-    telegramUsername: users.telegramUsername,
-    displayName: users.displayName,
-    totalMinutes,
-    activitiesCount,
-  })
-    .from(activities)
-    .innerJoin(users, eq(users.id, activities.userId))
-    .where(and(
-      eq(activities.competitionId, competition.id),
-      eq(activities.status, "approved"),
-      eq(users.isActive, true),
-    ))
-    .groupBy(users.id, users.telegramUsername, users.displayName)
-    .orderBy(desc(totalMinutes), desc(activitiesCount), users.displayName);
-
-  if (!rating.length) {
-    await sendTelegramMessage(chatId, "Пока нет одобренных активностей для рейтинга.");
-    return;
-  }
-
-  const medals = ["🥇", "🥈", "🥉"];
-  const lines = rating.map((item, index) => {
-    const place = medals[index] ?? `${index + 1}.`;
-    const username = item.telegramUsername?.trim();
-    const participant = username ? `@${username.replace(/^@/, "")}` : item.displayName;
-    return `${place} ${participant} — ${Number(item.totalMinutes)} мин. · ${Number(item.activitiesCount)} акт.`;
-  });
-
-  const header = "<b>🏆 Рейтинг по активным минутам</b>\n\n";
-  const footer = "\n\n🔥 Продолжаем двигаться каждый день!";
-  let body = "";
-  let hiddenCount = 0;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const candidate = body ? `${body}\n${lines[index]}` : lines[index];
-    if ((header + candidate + footer).length > 3900) {
-      hiddenCount = lines.length - index;
-      break;
-    }
-    body = candidate;
-  }
-
-  const truncated = hiddenCount > 0 ? `${body}\n…и ещё ${hiddenCount} участник(ов)` : body;
-  await sendTelegramMessage(chatId, header + truncated + footer);
 }
 
 type WebhookInfo = {
@@ -156,7 +88,8 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     service: "telegram-webhook",
-    ratingCommands: [...ratingCommands],
+    commands: [...publicGameCommands, ...adminGameCommands],
+    ratingCommand: "/rating_minutes",
     commit: process.env.RAILWAY_GIT_COMMIT_SHA ?? null,
     telegramWebhook,
   }, {
@@ -195,13 +128,11 @@ export async function POST(request: Request) {
     const chatId = String(message.chat.id);
     const telegramId = String(message.from.id);
     const command = message.text.trim().split(/\s+/)[0].split("@")[0].toLowerCase();
+    const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
 
-    if (ratingCommands.has(command)) {
-      await sendMinutesRating(chatId);
+    if (await handleGameCommand(command, chatId, user ?? null)) {
       return NextResponse.json({ ok: true });
     }
-
-    const [user] = await db.select().from(users).where(eq(users.telegramId, telegramId)).limit(1);
 
     if (command === "/start") {
       if (user) await db.update(users).set({ botStartedAt: new Date() }).where(eq(users.id, user.id));
@@ -216,7 +147,7 @@ export async function POST(request: Request) {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
     } else if (!user) {
-      await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении.", {
+      await sendTelegramMessage(chatId, "Сначала зарегистрируйтесь в приложении. Доступные команды: /help", {
         buttonText: "Открыть приложение", buttonUrl: appUrl(),
       });
     } else if (command === "/progress") {
@@ -230,23 +161,12 @@ export async function POST(request: Request) {
         `Пропущено дней: ${stats.missedDays}`,
         stats.remainingToDraw ? `До розыгрыша: ${stats.remainingToDraw}` : "Условие розыгрыша выполнено!",
       ].join("\n"));
-    } else if (command === "/today") {
-      const competition = await activeCompetition();
-      const stats = await userStats(user.id, competition.id);
-      await sendTelegramMessage(chatId,
-        stats.checkedInToday ? "Сегодняшний день уже засчитан." : "Сегодня активность ещё не отмечена.",
-        { buttonText: "Открыть форму", buttonUrl: appUrl() });
-    } else if (command === "/achievements") {
-      const competition = await activeCompetition();
-      const stats = await userStats(user.id, competition.id);
-      const text = stats.achievements.length
-        ? stats.achievements.map((item) => `${item.emoji} ${item.name}`).join("\n")
-        : "Достижений пока нет. Продолжайте движение!";
-      await sendTelegramMessage(chatId, `<b>Ваши достижения</b>\n${text}`);
     } else if (command === "/notifications") {
       const enabled = !user.notificationsEnabled;
       await db.update(users).set({ notificationsEnabled: enabled }).where(eq(users.id, user.id));
       await sendTelegramMessage(chatId, enabled ? "Вечерние напоминания включены." : "Вечерние напоминания выключены.");
+    } else {
+      await sendTelegramMessage(chatId, "Неизвестная команда. Откройте список: /help");
     }
 
     return NextResponse.json({ ok: true });
