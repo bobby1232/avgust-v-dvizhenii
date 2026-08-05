@@ -1,4 +1,4 @@
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import {
   activities,
@@ -28,6 +28,9 @@ type Competition = {
   endDate: string | null;
   timezone: string;
 };
+const ACTIVITY_CREATION_COOLDOWN_MINUTES = 30;
+const ACTIVITY_CREATION_COOLDOWN_MS = ACTIVITY_CREATION_COOLDOWN_MINUTES * 60 * 1000;
+
 type ActivityInput = {
   activityType: string;
   customActivityName?: string;
@@ -35,6 +38,31 @@ type ActivityInput = {
   description?: string;
   evidencePhotos: string[];
 };
+
+export function activityCreationAvailableAt(lastCreatedAt: Date) {
+  return new Date(lastCreatedAt.getTime() + ACTIVITY_CREATION_COOLDOWN_MS);
+}
+
+export function assertActivityCreationCooldown(lastCreatedAt: Date | null, now = new Date()) {
+  if (!lastCreatedAt) return;
+  const availableAt = activityCreationAvailableAt(lastCreatedAt);
+  if (availableAt > now) {
+    const retryTime = availableAt.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Moscow",
+    });
+    throw new ApiError(
+      429,
+      `Новую активность можно добавить не чаще одного раза в ${ACTIVITY_CREATION_COOLDOWN_MINUTES} минут. Попробуйте после ${retryTime} МСК.`,
+      "ACTIVITY_CREATION_COOLDOWN",
+      {
+        availableAt: [availableAt.toISOString()],
+        cooldownMinutes: [String(ACTIVITY_CREATION_COOLDOWN_MINUTES)],
+      },
+    );
+  }
+}
 
 export async function assertActiveActivityType(activityType: string) {
   const [knownType] = await db.select({ id: activityTypes.id }).from(activityTypes)
@@ -61,6 +89,12 @@ export async function createParticipantActivity(
   await assertActiveActivityType(input.activityType);
 
   const [[{ value: dailyCount }], created] = await db.transaction(async (tx) => {
+    const [latestActivity] = await tx.select({ createdAt: activities.createdAt }).from(activities).where(and(
+      eq(activities.competitionId, competition.id),
+      eq(activities.userId, user.id),
+    )).orderBy(desc(activities.createdAt)).limit(1);
+    assertActivityCreationCooldown(latestActivity?.createdAt ?? null);
+
     const counts = await tx.select({ value: count() }).from(activities).where(and(
       eq(activities.competitionId, competition.id),
       eq(activities.userId, user.id),
