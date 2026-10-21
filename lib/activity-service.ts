@@ -79,7 +79,7 @@ export async function createParticipantActivity(
   if (!user.isActive) throw new ApiError(403, "Ваш профиль отключён администратором", "USER_DISABLED");
   if (competitionPhase(competition) !== "active") {
     throw new ApiError(409,
-      competitionPhase(competition) === "before" ? "Игра начнётся 1 августа." : "Игра завершена. Посмотрите свои итоги.",
+      competitionPhase(competition) === "before" ? `Игра начнётся ${competition.startDate.split("-").reverse().join(".")}.` : "Игра завершена. Посмотрите свои итоги.",
       "COMPETITION_NOT_ACTIVE");
   }
   const activityDate = getCompetitionDate(new Date(), competition.timezone);

@@ -40,7 +40,7 @@ export const adminUserPatchSchema = z.object({
   comment: z.string().trim().max(500).optional(),
 });
 export const resetSchema = z.object({
-  confirmation: z.literal("УДАЛИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ"),
+  confirmation: z.literal("НАЧАТЬ ЗАНОВО"),
 });
 export const createCompetitionSchema = z.object({
   name: trimmed(160),

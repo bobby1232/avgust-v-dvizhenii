@@ -88,8 +88,8 @@ export async function userStats(userId: number, competitionId: number) {
   };
 }
 
-export async function communityData(includeInactive = false) {
-  const competition = await activeCompetition();
+export async function communityData(includeInactive = false, selectedCompetition?: typeof competitions.$inferSelect) {
+  const competition = selectedCompetition ?? await activeCompetition();
   const [userRows, dayRows, achievementRows] = await Promise.all([
     db.select().from(users)
       .where(includeInactive ? undefined : eq(users.isActive, true))

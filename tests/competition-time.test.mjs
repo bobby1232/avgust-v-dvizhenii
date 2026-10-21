@@ -68,3 +68,11 @@ test("a completed missed day resets current streak but preserves maximum", () =>
   assert.equal(progress.maxStreak, 2);
   assert.equal(progress.missedDays, 1);
 });
+
+test("November contest opens at Moscow midnight and closes after November 30", () => {
+  const contest = { startDate: "2026-11-01", endDate: "2026-11-30", timezone: "Europe/Moscow" };
+  assert.equal(competitionPhase(contest, new Date("2026-10-31T20:59:59Z")), "before");
+  assert.equal(competitionPhase(contest, new Date("2026-10-31T21:00:00Z")), "active");
+  assert.equal(competitionPhase(contest, new Date("2026-11-30T20:59:59Z")), "active");
+  assert.equal(competitionPhase(contest, new Date("2026-11-30T21:00:00Z")), "after");
+});

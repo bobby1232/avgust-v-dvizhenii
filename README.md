@@ -174,3 +174,7 @@ cron безопасно отвечает `GROUP_CHAT_NOT_CONFIGURED`.
 - CSV значения с `=`, `+`, `-`, `@` экранируются от formula injection.
 - `DEV_TELEGRAM_USER_ID` не работает при `NODE_ENV=production`.
 - Не запускайте destructive SQL и migration integration tests на production.
+
+## Ноябрь 2026 и архив
+
+Production-ветка `codex/gosup-games-mvp` синхронизирована с master. Миграция 0007 создаёт конкурс 1–30 ноября без удаления участников, активностей и розыгрышей августа. При входе выберите конкурс; серые карточки открывают сохранённых победителей и рейтинг. Административный endpoint reset-contest теперь только подготавливает ноябрь и не удаляет данные.

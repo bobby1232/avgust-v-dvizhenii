@@ -46,11 +46,11 @@ test("admin reset deletes users and requires explicit destructive confirmation",
     readFile("app/page.tsx", "utf8"),
     readFile("app/api/admin/reset-contest/route.ts", "utf8"),
   ]);
-  assert.match(page, /Сбросить результаты и начать заново/);
-  assert.match(page, /Все пользователи и их результаты будут удалены/);
-  assert.match(page, /competitionResetConfirmation !== "УДАЛИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ"/);
-  assert.match(route, /await tx\.delete\(users\)/);
-  assert.match(route, /resetSchema\.safeParse\(body\)/);
+  assert.match(page, /Подготовить ноябрьский конкурс/);
+  assert.match(page, /История и победители сохраняются/);
+  assert.match(page, /competitionResetConfirmation !== "НАЧАТЬ ЗАНОВО"/);
+  assert.doesNotMatch(route, /tx\.delete\(/);
+  assert.match(route, /resetSchema\.safeParse/);
   assert.doesNotMatch(page, /\bXP\b|последнее место/i);
   assert.match(page, /GOSUP GAMES/);
 });
