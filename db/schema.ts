@@ -17,7 +17,6 @@ export const competitions = pgTable("competitions", {
   timezone: varchar("timezone", { length: 64 }).notNull().default("Europe/Moscow"),
   isActive: boolean("is_active").notNull().default(true),
   notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
-  botStartedAt: timestamp("bot_started_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [uniqueIndex("competitions_one_active_idx").on(table.isActive).where(sql`${table.isActive} = true`)]);
@@ -32,6 +31,8 @@ export const users = pgTable("users", {
   department: varchar("department", { length: 120 }),
   role: userRole("role").notNull().default("participant"),
   isActive: boolean("is_active").notNull().default(true),
+  notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  botStartedAt: timestamp("bot_started_at", { withTimezone: true }),
   registeredAt: timestamp("registered_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index("users_registered_at_idx").on(table.registeredAt)]);

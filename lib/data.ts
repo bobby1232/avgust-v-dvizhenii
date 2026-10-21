@@ -42,7 +42,8 @@ export function favoriteActivity(
 }
 
 export async function userStats(userId: number, competitionId: number) {
-  const competition = await activeCompetition();
+  const [competition] = await db.select().from(competitions).where(eq(competitions.id, competitionId)).limit(1);
+  if (!competition) throw new ApiError(404, "Конкурс не найден", "NOT_FOUND");
   const [days, approvedActivities, achievements] = await Promise.all([
     db.select({ date: activityDays.activityDate }).from(activityDays).where(and(
       eq(activityDays.userId, userId),
@@ -86,8 +87,8 @@ export async function userStats(userId: number, competitionId: number) {
   };
 }
 
-export async function communityData() {
-  const competition = await activeCompetition();
+export async function communityData(competition = undefined as typeof competitions.$inferSelect | undefined) {
+  competition ??= await activeCompetition();
   const [userRows, dayRows, achievementRows] = await Promise.all([
     db.select().from(users).orderBy(desc(users.registeredAt)),
     db.select({ userId: activityDays.userId, date: activityDays.activityDate }).from(activityDays)
@@ -109,7 +110,6 @@ export async function communityData() {
       department: user.department,
       registeredAt: user.registeredAt,
       isActive: user.isActive,
-      notificationsEnabled: user.notificationsEnabled,
       ...progress,
       current: progress.currentStreak,
       max: progress.maxStreak,
