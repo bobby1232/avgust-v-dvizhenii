@@ -26,9 +26,10 @@ export async function changeCoins(c:PoolClient,userId:number,amount:number,kind:
 }
 export async function grantDailyCoins(userId:number,competitionId:number,day:string,streak:number){
  await coinTransaction(async c=>{
-  await changeCoins(c,userId,10,"daily",`daily:${competitionId}:${day}`);
+  const daily=await changeCoins(c,userId,10,"daily",`daily:${competitionId}:${day}`);
+  if(daily)await c.query("UPDATE coin_wallets SET xp=xp+10 WHERE user_id=$1",[userId]);
   for(const [threshold,reward] of [[3,15],[7,40],[14,80],[21,120],[30,200]]){
-   if(streak>=threshold)await changeCoins(c,userId,reward,"streak",`streak:${competitionId}:${threshold}`);
+   if(streak>=threshold){const awarded=await changeCoins(c,userId,reward,"streak",`streak:${competitionId}:${threshold}`);if(awarded)await c.query("UPDATE coin_wallets SET xp=xp+$2 WHERE user_id=$1",[userId,reward]);}
   }
  });
 }
