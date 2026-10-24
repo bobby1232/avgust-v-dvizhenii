@@ -1,4 +1,5 @@
 "use client";
+import CoinsPanel from "./coins-panel";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -608,6 +609,7 @@ export default function Home() {
         <h1>{tab === "today" ? `Привет, ${user?.displayName.split(" ")[0] ?? "участник"}` : tab === "progress" ? "Мой прогресс" : tab === "community" ? "Двигаемся вместе" : "Управление"}</h1>
       </div>
 
+      {me?.registered&&<CoinsPanel/>}
       <section className="section"><h3>Конкурсы</h3><div className="settings-list">{contests.map(c=><button key={c.id} disabled={archiveLoading} onClick={()=>void selectContest(c.id)} style={{background:c.isActive?"#e4f4e8":"#ededed",color:c.isActive?"#174a2a":"#555"}}><span>{c.isActive?"↗":"🏆"}</span><div><b>{c.name}</b><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:c.phase==="after"?"Завершён · победители и итоги":"Участвовать"}</small></div><i>›</i></button>)}</div></section>
       {selectedContest!==me?.competition.id&&<section className="section">{!selectedContest&&<h2>Выберите конкурс</h2>}{archiveLoading&&<p>Загрузка итогов…</p>}{archiveError&&<p role="alert">{archiveError}</p>}{archive&&<><h2>{contests.find(c=>c.id===selectedContest)?.name}</h2><h3>🏆 Победители</h3>{!archive.winners.length&&<p>В базе нет сохранённых победителей этого конкурса.</p>}<div className="people-list">{archive.winners.map(w=><article key={`${w.drawId}-${w.position}`}><span>{w.position}</span><div><b>{w.displayName}</b><small>Розыгрыш {new Date(w.drawnAt).toLocaleDateString("ru-RU")}</small></div></article>)}</div><h3>Итоговый рейтинг</h3><p>{archive.totalActiveDays} активных дней вместе</p><div className="people-list">{archive.participants.filter(p=>p.activeDays>0).map((p,i)=><article key={p.id}><span>{i+1}</span><div><b>{p.displayName}</b><small>{p.activeDays} активных дней</small></div></article>)}</div></>}</section>}
       {selectedContest===me?.competition.id&&<>
