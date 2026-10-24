@@ -614,16 +614,16 @@ export default function Home() {
 
       {walletOpen&&<><button className="text-button" onClick={()=>setWalletOpen(false)}>← Назад к конкурсам</button>{me?.registered?<CoinsPanel/>:<section className="section"><p>Для доступа к кошельку сначала зарегистрируйтесь в активном конкурсе.</p><button className="primary" onClick={()=>{setWalletOpen(false);if(me)setSelectedContest(me.competition.id)}}>Перейти к регистрации</button></section>}</>}
       {!walletOpen&&<>
-      <div className="gosup-home">
-        <div className="gh-welcome"><span>С возвращением!</span><h1>Привет, {user?.displayName.split(" ")[0] ?? "участник"} <span aria-hidden="true">👋</span></h1></div>
+      <div className={`gosup-home${contests.some(c=>c.isActive&&/ноябр|november/i.test(c.name))?" november-skin":""}`}>
+        <div className="gh-welcome"><span>🍂 Твой ноябрь начинается здесь</span><h1>Привет, {user?.displayName.split(" ")[0] ?? "участник"} <span aria-hidden="true">👋</span></h1><p className="gh-autumn-caption">Двигайся в своём ритме</p></div>
         <section className="gh-wallet" aria-label="GOSUP Coins">
           <button className="gh-wallet-top" onClick={()=>setWalletOpen(true)}><span className="gh-wallet-label"><span className="gh-wallet-symbol">◈</span> Мой кошелёк</span><span className="gh-wallet-chevron">↗</span></button>
           <button className="gh-wallet-balance" onClick={()=>setWalletOpen(true)}><strong>{homeBalance===null?"—":new Intl.NumberFormat("ru-RU").format(homeBalance)} <em>G</em></strong><small>GOSUP Coins · Игровой баланс</small></button>
           <div className="gh-wallet-actions"><button onClick={()=>setWalletOpen(true)}><span>↗</span>Перевести</button><button className="gh-rewards" onClick={()=>setWalletOpen(true)}><span>♢</span>Награды</button></div>
         </section>
-        <div className="gh-section-heading"><h2>Мои активности</h2><span>Все конкурсы</span></div>
+        <div className="gh-section-heading"><h2>Мои активности</h2><span>Ноябрьский сезон</span></div>
         <div className="gh-competitions">
-          {contests.filter(c=>c.isActive).map(c=><article className="gh-competition" key={c.id}><button className="gh-competition-main" disabled={archiveLoading} onClick={()=>void selectContest(c.id)}><span className="gh-competition-icon active">↗</span><span className="gh-competition-copy"><strong>{c.name}</strong><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:"Активный сезон · Участвовать"}</small></span><span className="gh-arrow">›</span></button><button className="gh-competition-cta" onClick={()=>void selectContest(c.id)} disabled={archiveLoading}>Открыть конкурс <span>→</span></button></article>)}
+          {contests.filter(c=>c.isActive).map(c=><article className="gh-competition" key={c.id}><button className="gh-competition-main" disabled={archiveLoading} onClick={()=>void selectContest(c.id)}><span className="gh-competition-icon active">🍁</span><span className="gh-competition-copy"><strong>{c.name}</strong><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:"Активный сезон · Участвовать"}</small></span><span className="gh-arrow">›</span></button><button className="gh-competition-cta" onClick={()=>void selectContest(c.id)} disabled={archiveLoading}>Открыть конкурс <span>→</span></button></article>)}
           {contests.filter(c=>!c.isActive).map(c=><button key={c.id} className="gh-competition gh-archived" disabled={archiveLoading} onClick={()=>void selectContest(c.id)}><span className="gh-competition-icon archived">🏆</span><span className="gh-competition-copy"><strong>{c.name}</strong><small>Завершён · Результаты</small></span><span className="gh-arrow">›</span></button>)}
           {!contests.length&&<p className="gh-empty">Конкурсы пока не опубликованы.</p>}
         </div>
