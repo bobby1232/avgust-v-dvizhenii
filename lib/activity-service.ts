@@ -15,6 +15,7 @@ import {
   isCompetitionDay,
 } from "./competition-time";
 import { calculateProgress } from "./progress-service";
+import { grantDailyCoins } from "./coins";
 import {
   awardActivityAchievements,
   awardStreakAchievements,
@@ -147,6 +148,7 @@ export async function createParticipantActivity(
   const activityAchievements = await awardActivityAchievements(
     competition.id, user.id, competition.startDate, competition.timezone);
   await revokeUnearnedAutomaticAchievements(competition.id, user.id, progress.maxStreak);
+  await grantDailyCoins(user.id, competition.id, activityDate, progress.maxStreak);
   return {
     activity: created,
     progress,
