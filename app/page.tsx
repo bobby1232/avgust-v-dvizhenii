@@ -154,10 +154,11 @@ type ArchiveResults = {totalActiveDays:number;participants:{id:number;displayNam
 export default function Home() {
   const [contests,setContests]=useState<ContestChoice[]>([]);
   const [selectedContest,setSelectedContest]=useState<number|null>(null);
+  const [walletOpen,setWalletOpen]=useState(false);
   const [archive,setArchive]=useState<ArchiveResults|null>(null);
   const [archiveLoading,setArchiveLoading]=useState(false);
   const [archiveError,setArchiveError]=useState("");
-  async function selectContest(id:number){setSelectedContest(id);setArchive(null);setArchiveError("");if(id===me?.competition.id)return;setArchiveLoading(true);try{setArchive(await api<ArchiveResults>(`/api/competitions?id=${id}`))}catch(e){setArchiveError(e instanceof Error?e.message:"Не удалось загрузить итоги")}finally{setArchiveLoading(false)}}
+  async function selectContest(id:number){setWalletOpen(false);setSelectedContest(id);setArchive(null);setArchiveError("");if(id===me?.competition.id)return;setArchiveLoading(true);try{setArchive(await api<ArchiveResults>(`/api/competitions?id=${id}`))}catch(e){setArchiveError(e instanceof Error?e.message:"Не удалось загрузить итоги")}finally{setArchiveLoading(false)}}
 
   const [tab, setTab] = useState<Tab>("today");
   const [adminTab, setAdminTab] = useState<AdminTab>("participants");
@@ -606,11 +607,13 @@ export default function Home() {
         </button>
       </header>
       <div className="page-heading">
-        <p>{me?.competition.name} · Europe/Moscow</p>
-        <h1>{tab === "today" ? `Привет, ${user?.displayName.split(" ")[0] ?? "участник"}` : tab === "progress" ? "Мой прогресс" : tab === "community" ? "Двигаемся вместе" : "Управление"}</h1>
+        <p>{walletOpen?"GOSUP Games · Личный кошелёк":`${me?.competition.name} · Europe/Moscow`}</p>
+        <h1>{walletOpen?"Мой кошелёк":tab === "today" ? `Привет, ${user?.displayName.split(" ")[0] ?? "участник"}` : tab === "progress" ? "Мой прогресс" : tab === "community" ? "Двигаемся вместе" : "Управление"}</h1>
       </div>
 
-      {me?.registered&&<CoinsPanel/>}
+      {walletOpen&&<><button className="text-button" onClick={()=>setWalletOpen(false)}>← Назад к конкурсам</button>{me?.registered?<CoinsPanel/>:<section className="section"><p>Для доступа к кошельку сначала зарегистрируйтесь в активном конкурсе.</p><button className="primary" onClick={()=>{setWalletOpen(false);if(me)setSelectedContest(me.competition.id)}}>Перейти к регистрации</button></section>}</>}
+      {!walletOpen&&<>
+      <section className="section"><h3>GOSUP Coins</h3><div className="settings-list"><button onClick={()=>setWalletOpen(true)} style={{background:"#e4f4e8",color:"#174a2a"}}><span>🪙</span><div><b>Мой кошелёк</b><small>Баланс, переводы и магазин · независимо от конкурса</small></div><i>›</i></button></div></section>
       {me?.role==="admin"&&<CoinsAdmin/>}
       <section className="section"><h3>Конкурсы</h3><div className="settings-list">{contests.map(c=><button key={c.id} disabled={archiveLoading} onClick={()=>void selectContest(c.id)} style={{background:c.isActive?"#e4f4e8":"#ededed",color:c.isActive?"#174a2a":"#555"}}><span>{c.isActive?"↗":"🏆"}</span><div><b>{c.name}</b><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:c.phase==="after"?"Завершён · победители и итоги":"Участвовать"}</small></div><i>›</i></button>)}</div></section>
       {selectedContest!==me?.competition.id&&<section className="section">{!selectedContest&&<h2>Выберите конкурс</h2>}{archiveLoading&&<p>Загрузка итогов…</p>}{archiveError&&<p role="alert">{archiveError}</p>}{archive&&<><h2>{contests.find(c=>c.id===selectedContest)?.name}</h2><h3>🏆 Победители</h3>{!archive.winners.length&&<p>В базе нет сохранённых победителей этого конкурса.</p>}<div className="people-list">{archive.winners.map(w=><article key={`${w.drawId}-${w.position}`}><span>{w.position}</span><div><b>{w.displayName}</b><small>Розыгрыш {new Date(w.drawnAt).toLocaleDateString("ru-RU")}</small></div></article>)}</div><h3>Итоговый рейтинг</h3><p>{archive.totalActiveDays} активных дней вместе</p><div className="people-list">{archive.participants.filter(p=>p.activeDays>0).map((p,i)=><article key={p.id}><span>{i+1}</span><div><b>{p.displayName}</b><small>{p.activeDays} активных дней</small></div></article>)}</div></>}</section>}
@@ -657,6 +660,7 @@ export default function Home() {
       </div>}
 
       <nav className="bottom-nav"><button className={tab === "today" ? "active" : ""} onClick={() => setTab("today")}><span>⌂</span>Сегодня</button><button className={tab === "progress" ? "active" : ""} onClick={() => setTab("progress")}><span>◴</span>Прогресс</button><button className={tab === "community" ? "active" : ""} onClick={() => setTab("community")}><span>◌</span>Вместе</button>{me?.role === "admin" && <button className={tab === "admin" ? "active" : ""} onClick={() => setTab("admin")}><span>⌘</span>Админ</button>}</nav></>}
+      </>}
     </section>
 
     {selectedContest===me?.competition.id&&!me?.registered && <div className="modal-backdrop"><section className="modal"><span className="eyebrow">GOSUP GAMES | Движение каждый день</span><h2>Движение каждый день</h2><p>В период конкурса отмечайте осознанную физическую активность длительностью от 20 минут.</p><button className="text-button" onClick={() => setShowRules(true)}>Прочитать полные правила</button><label className="note-field">Отображаемое имя<input maxLength={120} value={name} onChange={(event) => setName(event.target.value)}/></label><label className="note-field">Подразделение<input maxLength={120} value={department} onChange={(event) => setDepartment(event.target.value)} placeholder="Необязательно"/></label><button className="primary" onClick={() => void register()}>Вступить в игру</button></section></div>}
