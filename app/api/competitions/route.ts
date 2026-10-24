@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { competitions, draws, drawWinners, users } from "@/db/schema";
 import { requireSession, jsonError, ApiError } from "@/lib/api";
@@ -11,7 +11,15 @@ export async function GET(request: Request) {
     await requireSession();
     const id = new URL(request.url).searchParams.get("id");
     if (!id) {
-      const items = await db.select().from(competitions).orderBy(desc(competitions.startDate));
+      // Hide empty archived contests; preserve the active contest before registration.
+      const items = await db.select().from(competitions)
+        .where(sql`(
+          ${competitions.isActive} = true
+          OR EXISTS (SELECT 1 FROM activity_days ad WHERE ad.competition_id = ${competitions.id})
+          OR EXISTS (SELECT 1 FROM activities a WHERE a.competition_id = ${competitions.id})
+          OR EXISTS (SELECT 1 FROM draws d WHERE d.competition_id = ${competitions.id})
+        )`)
+        .orderBy(desc(competitions.startDate));
       return NextResponse.json({ competitions: items.map(item => ({ ...item, phase: competitionPhase(item) })) });
     }
     if (!/^[1-9]\d*$/.test(id) || !Number.isSafeInteger(Number(id))) throw new ApiError(400, "Некорректный конкурс", "INVALID_COMPETITION");
