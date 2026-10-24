@@ -11,13 +11,23 @@ export async function GET(request: Request) {
     await requireSession();
     const id = new URL(request.url).searchParams.get("id");
     if (!id) {
-      // Hide empty archived contests; preserve the active contest before registration.
+      // Show the active contest and archives with real participation records only.
+      // An empty draw must not make an otherwise empty competition visible.
       const items = await db.select().from(competitions)
         .where(sql`(
           ${competitions.isActive} = true
           OR EXISTS (SELECT 1 FROM activity_days ad WHERE ad.competition_id = ${competitions.id})
           OR EXISTS (SELECT 1 FROM activities a WHERE a.competition_id = ${competitions.id})
-          OR EXISTS (SELECT 1 FROM draws d WHERE d.competition_id = ${competitions.id})
+          OR EXISTS (
+            SELECT 1 FROM draw_participants dp
+            JOIN draws d ON d.id = dp.draw_id
+            WHERE d.competition_id = ${competitions.id}
+          )
+          OR EXISTS (
+            SELECT 1 FROM draw_winners dw
+            JOIN draws d ON d.id = dw.draw_id
+            WHERE d.competition_id = ${competitions.id}
+          )
         )`)
         .orderBy(desc(competitions.startDate));
       return NextResponse.json({ competitions: items.map(item => ({ ...item, phase: competitionPhase(item) })) });
