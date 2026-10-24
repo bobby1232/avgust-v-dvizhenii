@@ -235,3 +235,26 @@ button { color: inherit; }
 .gh-competitions{display:grid;gap:10px}.gh-competition{width:100%;border:1px solid #e2e5dd;border-radius:20px;padding:14px;background:#fff;color:#1d3d2d;text-align:left;box-shadow:0 3px 14px #26382d08}.gh-competition-main{display:flex;align-items:center;gap:13px;width:100%;padding:0;border:0;background:transparent;text-align:left;color:inherit;cursor:pointer}.gh-competition-icon{display:grid;place-items:center;flex:none;width:50px;height:50px;border-radius:15px;font-size:23px}.gh-competition-icon.active{background:#e2f0de;color:#285c3f}.gh-competition-icon.archived{background:#f1e9d8;color:#a67a26}.gh-competition-copy{flex:1;min-width:0}.gh-competition-copy strong{display:block;font-size:14px;line-height:1.3}.gh-competition-copy small{display:block;margin-top:6px;color:#718078;font-size:11px}.gh-arrow{font-size:27px;color:#89918b}.gh-competition-cta{display:flex;justify-content:center;align-items:center;gap:12px;width:100%;min-height:43px;margin-top:14px;border:0;border-radius:12px;background:#1e583e;color:white;font-size:13px;font-weight:700;cursor:pointer}.gh-competition-cta span{font-size:18px}.gh-archived{display:flex;align-items:center;gap:13px;cursor:pointer}.gh-archived .gh-competition-copy strong{color:#28382d}.gh-empty{color:#728076;font-size:13px}
 .gh-nav{position:sticky;bottom:calc(10px + var(--app-safe-bottom,0px));z-index:5;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin:28px -9px -85px;padding:6px;border:1px solid #e0e4db;border-radius:23px;background:#ffffffed;box-shadow:0 9px 25px #142d2021;backdrop-filter:blur(14px)}.gh-nav button{display:grid;place-items:center;align-content:center;gap:3px;min-height:59px;border:0;border-radius:18px;background:transparent;color:#7b877d;font-size:10px;cursor:pointer}.gh-nav button span{font-size:24px;line-height:1.1}.gh-nav button.selected{background:#e6eee4;color:#21583d;font-weight:700}
 @media(min-width:600px){.gosup-home{max-width:520px;margin:0 auto}}
+
+
+/* November seasonal skin — scoped to home, not the global GOSUP Coins wallet. */
+.phone:has(.gosup-home.november-skin){background:#f3ede1}
+.november-skin{background:#f3ede1;color:#344739}
+.november-skin .gh-welcome>span{color:#956a43;font-weight:600}
+.november-skin .gh-welcome h1{color:#344739}
+.november-skin .gh-autumn-caption{margin:9px 0 0;color:#8b8070;font-size:13px}
+.november-skin .gh-wallet{background:linear-gradient(145deg,#344739 0%,#263c30 100%);box-shadow:0 15px 30px #34473924}
+.november-skin .gh-wallet-symbol,.november-skin .gh-wallet-balance em{color:#e8be75}
+.november-skin .gh-wallet-actions button{background:#536555}
+.november-skin .gh-wallet-actions .gh-rewards{background:#e8be75;color:#344739}
+.november-skin .gh-section-heading h2{color:#344739}
+.november-skin .gh-section-heading span{color:#9b7046}
+.november-skin .gh-competition{background:#fff9ef;border-color:#e4d9c9;box-shadow:0 4px 18px #6b4d2d0c}
+.november-skin .gh-competition-icon.active{background:#eedac0;color:#a9633e}
+.november-skin .gh-competition-icon.archived{background:#f0e5d5}
+.november-skin .gh-competition-copy strong{color:#344739}
+.november-skin .gh-competition-copy small{color:#8b8070}
+.november-skin .gh-competition-cta{background:#a9633e}
+.november-skin .gh-nav{background:#fff9efed;border-color:#e4d9c9}
+.november-skin .gh-nav button.selected{background:#f3e1cb;color:#a9633e}
+.november-skin .gh-nav button{color:#8b8070}
