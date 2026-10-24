@@ -57,6 +57,13 @@
       "when": 1792616400000,
       "tag": "0007_november_contest",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792840000000,
+      "tag": "0008_gosup_coins",
+      "breakpoints": true
     }
   ]
 }
