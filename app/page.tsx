@@ -154,6 +154,8 @@ export default function Home() {
   const [contests,setContests]=useState<ContestChoice[]>([]);
   const [selectedContest,setSelectedContest]=useState<number|null>(null);
   const [walletOpen,setWalletOpen]=useState(false);
+  const [homeBalance,setHomeBalance]=useState<number|null>(null);
+  useEffect(()=>{void api<{wallet:{balance:number}}>("/api/coins").then(r=>setHomeBalance(r.wallet.balance)).catch(()=>setHomeBalance(null));},[walletOpen]);
   const [archive,setArchive]=useState<ArchiveResults|null>(null);
   const [archiveLoading,setArchiveLoading]=useState(false);
   const [archiveError,setArchiveError]=useState("");
@@ -612,9 +614,21 @@ export default function Home() {
 
       {walletOpen&&<><button className="text-button" onClick={()=>setWalletOpen(false)}>← Назад к конкурсам</button>{me?.registered?<CoinsPanel/>:<section className="section"><p>Для доступа к кошельку сначала зарегистрируйтесь в активном конкурсе.</p><button className="primary" onClick={()=>{setWalletOpen(false);if(me)setSelectedContest(me.competition.id)}}>Перейти к регистрации</button></section>}</>}
       {!walletOpen&&<>
-      <section className="section"><h3>GOSUP Coins</h3><div className="settings-list"><button onClick={()=>setWalletOpen(true)} style={{background:"#e4f4e8",color:"#174a2a"}}><span>🪙</span><div><b>Мой кошелёк</b><small>Баланс, переводы и магазин · независимо от конкурса</small></div><i>›</i></button></div></section>
-      
-      <section className="section"><h3>Конкурсы</h3><div className="settings-list">{contests.map(c=><button key={c.id} disabled={archiveLoading} onClick={()=>void selectContest(c.id)} style={{background:c.isActive?"#e4f4e8":"#ededed",color:c.isActive?"#174a2a":"#555"}}><span>{c.isActive?"↗":"🏆"}</span><div><b>{c.name}</b><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:c.phase==="after"?"Завершён · победители и итоги":"Участвовать"}</small></div><i>›</i></button>)}</div></section>
+      <div className="gosup-home">
+        <div className="gh-welcome"><span>С возвращением!</span><h1>Привет, {user?.displayName.split(" ")[0] ?? "участник"} <span aria-hidden="true">👋</span></h1></div>
+        <section className="gh-wallet" aria-label="GOSUP Coins">
+          <button className="gh-wallet-top" onClick={()=>setWalletOpen(true)}><span className="gh-wallet-label"><span className="gh-wallet-symbol">◈</span> Мой кошелёк</span><span className="gh-wallet-chevron">↗</span></button>
+          <button className="gh-wallet-balance" onClick={()=>setWalletOpen(true)}><strong>{homeBalance===null?"—":new Intl.NumberFormat("ru-RU").format(homeBalance)} <em>G</em></strong><small>GOSUP Coins · Игровой баланс</small></button>
+          <div className="gh-wallet-actions"><button onClick={()=>setWalletOpen(true)}><span>↗</span>Перевести</button><button className="gh-rewards" onClick={()=>setWalletOpen(true)}><span>♢</span>Награды</button></div>
+        </section>
+        <div className="gh-section-heading"><h2>Мои активности</h2><span>Все конкурсы</span></div>
+        <div className="gh-competitions">
+          {contests.filter(c=>c.isActive).map(c=><article className="gh-competition" key={c.id}><button className="gh-competition-main" disabled={archiveLoading} onClick={()=>void selectContest(c.id)}><span className="gh-competition-icon active">↗</span><span className="gh-competition-copy"><strong>{c.name}</strong><small>{c.phase==="before"?`Старт ${c.startDate.split("-").reverse().join(".")}`:"Активный сезон · Участвовать"}</small></span><span className="gh-arrow">›</span></button><button className="gh-competition-cta" onClick={()=>void selectContest(c.id)} disabled={archiveLoading}>Открыть конкурс <span>→</span></button></article>)}
+          {contests.filter(c=>!c.isActive).map(c=><button key={c.id} className="gh-competition gh-archived" disabled={archiveLoading} onClick={()=>void selectContest(c.id)}><span className="gh-competition-icon archived">🏆</span><span className="gh-competition-copy"><strong>{c.name}</strong><small>Завершён · Результаты</small></span><span className="gh-arrow">›</span></button>)}
+          {!contests.length&&<p className="gh-empty">Конкурсы пока не опубликованы.</p>}
+        </div>
+        <nav className="gh-nav" aria-label="Главная навигация"><button className="selected" onClick={()=>{setSelectedContest(null);setWalletOpen(false)}}><span>⌂</span>Главная</button><button onClick={()=>setWalletOpen(true)}><span>◈</span>Кошелёк</button><button onClick={()=>document.querySelector(".gh-competitions")?.scrollIntoView({behavior:"smooth"})}><span>♜</span>Конкурсы</button><button onClick={()=>setShowAvatarEditor(true)}><span>♙</span>Профиль</button></nav>
+      </div>
       {selectedContest!==me?.competition.id&&<section className="section">{!selectedContest&&<h2>Выберите конкурс</h2>}{archiveLoading&&<p>Загрузка итогов…</p>}{archiveError&&<p role="alert">{archiveError}</p>}{archive&&<><h2>{contests.find(c=>c.id===selectedContest)?.name}</h2><h3>🏆 Победители</h3>{!archive.winners.length&&<p>В базе нет сохранённых победителей этого конкурса.</p>}<div className="people-list">{archive.winners.map(w=><article key={`${w.drawId}-${w.position}`}><span>{w.position}</span><div><b>{w.displayName}</b><small>Розыгрыш {new Date(w.drawnAt).toLocaleDateString("ru-RU")}</small></div></article>)}</div><h3>Итоговый рейтинг</h3><p>{archive.totalActiveDays} активных дней вместе</p><div className="people-list">{archive.participants.filter(p=>p.activeDays>0).map((p,i)=><article key={p.id}><span>{i+1}</span><div><b>{p.displayName}</b><small>{p.activeDays} активных дней</small></div></article>)}</div></>}</section>}
       {selectedContest===me?.competition.id&&<>
       {tab === "today" && <div className="view">
