@@ -1,6 +1,9 @@
 name: Validate app
 
 on:
+  push:
+    branches:
+      - November_competition
   pull_request:
     branches:
       - codex/gosup-games-mvp
