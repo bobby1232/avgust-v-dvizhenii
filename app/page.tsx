@@ -584,7 +584,8 @@ export default function Home() {
 
   const periodDays=me?.competition.endDate?Math.floor((Date.parse(me.competition.endDate)-Date.parse(me.competition.startDate))/86400000)+1:31;
   const currentDate=new Intl.DateTimeFormat("sv-SE",{timeZone:"Europe/Moscow"}).format(new Date());
-  const canCheckin=!!me&&currentDate>=me.competition.startDate&&(!me.competition.endDate||currentDate<=me.competition.endDate);
+  const activeContestPhase=contests.find(c=>c.id===me?.competition.id)?.phase;
+  const canCheckin=!!me&&(activeContestPhase==="active"||(currentDate>=me.competition.startDate&&(!me.competition.endDate||currentDate<=me.competition.endDate)));
   const user = me?.profile;
   const stats = progress ?? me?.stats;
   const days = stats?.activeDays ?? 0;
@@ -615,12 +616,13 @@ export default function Home() {
 
       {walletOpen&&<><button className="text-button" onClick={()=>setWalletOpen(false)}>← Назад к конкурсам</button>{me?.registered?<CoinsPanel/>:<section className="section"><p>Для доступа к кошельку сначала зарегистрируйтесь в активном конкурсе.</p><button className="primary" onClick={()=>{setWalletOpen(false);if(me)setSelectedContest(me.competition.id)}}>Перейти к регистрации</button></section>}</>}
       {!walletOpen&&<>
-      <div className={`gosup-home${novemberTheme?" november-skin":""}`}>
+      {selectedContest===null&&<div className={`gosup-home${novemberTheme?" november-skin":""}`}>
         <div className="gh-welcome"><span>{novemberTheme?"🍂 Твой ноябрь начинается здесь":"С возвращением!"}</span><h1>Привет, {user?.displayName.split(" ")[0] ?? "участник"} <span aria-hidden="true">👋</span></h1>{novemberTheme&&<p className="gh-autumn-caption">Двигайся в своём ритме</p>}</div>
-        <section className="gh-wallet" aria-label="GOSUP Coins">
+        {me?.competition&&<section className="section" style={{margin:"16px 0 22px",padding:"20px",borderRadius:24,background:"#fff9ef",border:"1px solid #e5d5bc"}}><span style={{fontSize:13,color:"#94663f",fontWeight:700}}>🍁 ТЕКУЩИЙ КОНКУРС</span><h2 style={{margin:"10px 0 6px",color:"#2e4839"}}>{me.competition.name}</h2><p style={{margin:"0 0 16px",color:"#6b7167"}}>{days} активных дней · {streak} дней подряд</p><button className="primary" onClick={()=>{setSelectedContest(me.competition.id);setTab("today");if(canCheckin&&me.registered)setShowCheckin(true)}}>{canCheckin&&me.registered?"＋ Добавить активность":"Перейти в конкурс →"}</button><button className="text-button" onClick={()=>{setSelectedContest(me.competition.id);setTab("today")}}>Посмотреть конкурс и прогресс →</button></section>}
+        <section className="gh-wallet" aria-label="GOSUP Coins" style={{padding:"18px 20px",marginBottom:20}}>
           <button className="gh-wallet-top" onClick={()=>setWalletOpen(true)}><span className="gh-wallet-label"><span className="gh-wallet-symbol">◈</span> Мой кошелёк</span><span className="gh-wallet-chevron">↗</span></button>
           <button className="gh-wallet-balance" onClick={()=>setWalletOpen(true)}><strong>{homeBalance===null?"—":new Intl.NumberFormat("ru-RU").format(homeBalance)} <em>G</em></strong><small>GOSUP Coins · Игровой баланс</small></button>
-          <div className="gh-wallet-actions"><button onClick={()=>setWalletOpen(true)}><span>↗</span>Перевести</button><button className="gh-rewards" onClick={()=>setWalletOpen(true)}><span>♢</span>Награды</button></div>
+
         </section>
         <div className="gh-section-heading"><h2>Мои активности</h2><span>{novemberTheme?"Ноябрьский сезон":"Все конкурсы"}</span></div>
         <div className="gh-competitions">
@@ -629,13 +631,13 @@ export default function Home() {
           {!contests.length&&<p className="gh-empty">Конкурсы пока не опубликованы.</p>}
         </div>
         <nav className="gh-nav" aria-label="Главная навигация"><button className="selected" onClick={()=>{setSelectedContest(null);setWalletOpen(false)}}><span>⌂</span>Главная</button><button onClick={()=>setWalletOpen(true)}><span>◈</span>Кошелёк</button><button onClick={()=>document.querySelector(".gh-competitions")?.scrollIntoView({behavior:"smooth"})}><span>♜</span>Конкурсы</button><button onClick={()=>setShowAvatarEditor(true)}><span>♙</span>Профиль</button></nav>
-      </div>
+      </div>}
       {selectedContest!==me?.competition.id&&<section className="section">{!selectedContest&&<h2>Выберите конкурс</h2>}{archiveLoading&&<p>Загрузка итогов…</p>}{archiveError&&<p role="alert">{archiveError}</p>}{archive&&<><h2>{contests.find(c=>c.id===selectedContest)?.name}</h2><h3>🏆 Победители</h3>{!archive.winners.length&&<p>В базе нет сохранённых победителей этого конкурса.</p>}<div className="people-list">{archive.winners.map(w=><article key={`${w.drawId}-${w.position}`}><span>{w.position}</span><div><b>{w.displayName}</b><small>Розыгрыш {new Date(w.drawnAt).toLocaleDateString("ru-RU")}</small></div></article>)}</div><h3>Итоговый рейтинг</h3><p>{archive.totalActiveDays} активных дней вместе</p><div className="people-list">{archive.participants.filter(p=>p.activeDays>0).map((p,i)=><article key={p.id}><span>{i+1}</span><div><b>{p.displayName}</b><small>{p.activeDays} активных дней</small></div></article>)}</div></>}</section>}
-      {selectedContest===me?.competition.id&&<>
+      {selectedContest===me?.competition.id&&<><section className="section" style={{paddingTop:14}}><button className="text-button" onClick={()=>setSelectedContest(null)}>← На главную</button><h2 style={{margin:"12px 0"}}>{me.competition.name}</h2><p style={{margin:"0 0 14px",color:"#68736c"}}>{canCheckin?"Конкурс открыт для добавления активностей":`Начало: ${me.competition.startDate.split("-").reverse().join(".")}`}</p>{canCheckin&&me.registered&&<button className="primary" onClick={()=>setShowCheckin(true)}>＋ Добавить активность</button>}</section>
       {tab === "today" && <div className="view">
         <section className="hero-card">
           <div className="hero-top"><div><span className="eyebrow">{checked ? "Сегодня готово" : "Не останавливаемся"}</span><h2><strong>{streak}</strong> дней подряд</h2></div><div className="streak-orbit" aria-label={`${streak} дней подряд`}><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.6 2.4c.5 3.5-1.9 4.8-3.6 7.1-1.4 1.8-1.2 3.7.1 5.1-.1-2.2 1.2-3.6 2.7-4.8.1 2 1.7 3 2.2 4.6.4 1.3 0 2.6-.8 3.5 2.3-.8 3.8-3 3.8-5.6 0-3.6-2.2-7.2-4.4-9.9ZM10.9 21c-2.8-.4-5-2.8-5-5.8 0-2.2 1.1-4.1 2.8-5.4-.5 3.1.6 4.5 1.8 5.8 1.1 1.2 1.6 2.6.4 5.4Z"/></svg></span></div></div>
-          <button className={`primary ${checked ? "complete" : ""}`} disabled={!canCheckin} onClick={() => setShowCheckin(true)}>{!canCheckin?"Приём активностей закрыт":checked ? "＋ Добавить ещё активность" : "Отметить активность"}</button>
+          <button className={`primary ${checked ? "complete" : ""}`} disabled={!canCheckin} onClick={() => setShowCheckin(true)}>{!canCheckin?"Приём активностей пока не открыт":checked ? "＋ Добавить ещё активность" : "＋ Добавить активность"}</button>
           <small>Несколько тренировок сохраняются отдельно, день засчитывается один раз</small>
         </section>
         <section className="section"><div className="stats-grid">
