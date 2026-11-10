@@ -17,6 +17,22 @@ function databaseUrl(): string {
   return value;
 }
 
+function databaseSsl(): false | { rejectUnauthorized: false } | undefined {
+  const configured = process.env.DATABASE_SSL?.trim().toLowerCase();
+
+  if (["false", "0", "disable", "disabled"].includes(configured ?? "")) {
+    return false;
+  }
+
+  if (["true", "1", "require", "required"].includes(configured ?? "")) {
+    return { rejectUnauthorized: false };
+  }
+
+  return process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false }
+    : undefined;
+}
+
 export function getPool(): pg.Pool {
   if (globalDb.avgustPool) return globalDb.avgustPool;
 
@@ -25,7 +41,7 @@ export function getPool(): pg.Pool {
     max: Number(process.env.DATABASE_POOL_SIZE ?? 10),
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    ssl: databaseSsl(),
   });
 
   globalDb.avgustPool = pool;
